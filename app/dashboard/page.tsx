@@ -3,8 +3,10 @@
 import { Shield, Activity, AlertTriangle, Lock, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { toast } from "sonner"
 
-const Dashboard = () => {
+export default function Dashboard() {
   const stats = [
     { label: "Total Projects", value: "12", icon: Shield, color: "text-cyan-400" },
     { label: "Threats Detected", value: "47", icon: AlertTriangle, color: "text-orange-400" },
@@ -33,6 +35,7 @@ const Dashboard = () => {
             </h1>
           </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <button className="px-4 py-2 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors">
               Profile
             </button>
@@ -133,7 +136,14 @@ const Dashboard = () => {
                 Upload your web application and let our advanced scanner detect vulnerabilities in seconds.
               </p>
               <div className="flex gap-4">
-                <Button className="bg-primary text-primary-foreground hover:opacity-90">Upload Project</Button>
+                <Button 
+                  className="bg-primary text-primary-foreground hover:opacity-90"
+                  onClick={() => toast.success("Upload feature coming soon!", {
+                    description: "You'll be able to upload and scan your projects here."
+                  })}
+                >
+                  Upload Project
+                </Button>
                 <Button
                   variant="outline"
                   className="border-primary/30 text-foreground hover:bg-primary/10 bg-transparent"
@@ -155,5 +165,3 @@ const Dashboard = () => {
     </div>
   )
 }
-
-export default Dashboard
