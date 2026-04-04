@@ -1,28 +1,47 @@
-"use client"
-
-import { Shield, Activity, AlertTriangle, Lock, Zap } from "lucide-react"
+import { Shield, Lock, Zap, TrendingUp, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import Link from "next/link"
 
-const Dashboard = () => {
-  const stats = [
-    { label: "Total Projects", value: "12", icon: Shield, color: "text-cyan-400" },
-    { label: "Threats Detected", value: "47", icon: AlertTriangle, color: "text-orange-400" },
-    { label: "Critical Issues", value: "3", icon: Zap, color: "text-red-400" },
-    { label: "System Status", value: "Secure", icon: Lock, color: "text-green-400" },
+export default function LandingPage() {
+  const features = [
+    {
+      icon: Shield,
+      title: "Real-time Threat Detection",
+      description:
+        "Advanced AI-powered scanning to detect vulnerabilities instantly across your entire web application.",
+      color: "text-cyan-400",
+    },
+    {
+      icon: Lock,
+      title: "Enterprise Security",
+      description: "Military-grade encryption and compliance with OWASP standards to protect your sensitive data.",
+      color: "text-blue-400",
+    },
+    {
+      icon: Zap,
+      title: "Lightning Fast Scans",
+      description: "Complete vulnerability analysis in seconds with our optimized scanning engine.",
+      color: "text-purple-400",
+    },
+    {
+      icon: TrendingUp,
+      title: "Detailed Reports",
+      description: "Comprehensive vulnerability reports with actionable recommendations and severity levels.",
+      color: "text-orange-400",
+    },
   ]
 
-  const recentScans = [
-    { name: "e-commerce-api", status: "Completed", threats: 5, severity: "Medium" },
-    { name: "user-auth-service", status: "Running", threats: 0, severity: "Low" },
-    { name: "payment-gateway", status: "Completed", threats: 2, severity: "High" },
-    { name: "admin-dashboard", status: "Completed", threats: 8, severity: "Critical" },
+  const testimonials = [
+    { company: "TechCorp", quote: "SecurityDefender helped us eliminate 95% of our vulnerabilities in 3 months." },
+    { company: "FinanceHub", quote: "The best security scanner we've used. Fast, accurate, and incredibly reliable." },
+    { company: "CloudServices", quote: "Essential tool for maintaining our security posture. Highly recommend!" },
   ]
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      {/* Header Navigation */}
+      <header className="border-b border-border bg-card/30 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
@@ -32,128 +51,171 @@ const Dashboard = () => {
               SecurityDefender
             </h1>
           </div>
+          <nav className="hidden md:flex items-center gap-8">
+            <a href="#features" className="text-foreground/80 hover:text-foreground transition-colors">
+              Features
+            </a>
+            <a href="#testimonials" className="text-foreground/80 hover:text-foreground transition-colors">
+              Testimonials
+            </a>
+            <a href="#pricing" className="text-foreground/80 hover:text-foreground transition-colors">
+              Pricing
+            </a>
+          </nav>
           <div className="flex items-center gap-4">
-            <button className="px-4 py-2 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors">
-              Profile
-            </button>
-            <button className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-              Login
-            </button>
+            <Link href="/login">
+              <Button variant="ghost">Sign In</Button>
+            </Link>
+            <Link href="/register">
+              <Button className="bg-primary text-primary-foreground hover:opacity-90">Get Started</Button>
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Intro Section */}
-        <div className="mb-12">
-          <h2 className="text-4xl font-bold mb-4">Web Vulnerability Scanner</h2>
-          <p className="text-gray-400 text-lg">
-            Automated threat detection and security analysis for your web applications
+      {/* Hero Section */}
+      <section className="relative py-20 px-4 overflow-hidden">
+        {/* Animated Background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-600/5 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto text-center mb-16">
+          <div className="inline-block mb-6 px-4 py-2 bg-primary/10 border border-primary/30 rounded-full">
+            <span className="text-primary text-sm font-medium">The Future of Web Security</span>
+          </div>
+
+          <h2 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
+            <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Defend Your Web Applications
+            </span>
+            <br /> From Threats
+          </h2>
+
+          <p className="text-xl text-foreground/70 mb-10 max-w-2xl mx-auto">
+            Advanced vulnerability scanning with AI-powered threat detection. Identify and fix security issues before
+            attackers find them.
           </p>
-        </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat, i) => {
-            const Icon = stat.icon
-            return (
-              <Card
-                key={i}
-                className="bg-card border-border hover:border-primary/50 transition-all duration-300 overflow-hidden group"
-              >
-                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-full -mr-12 -mt-12" />
-                <div className="p-6 relative z-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm text-gray-400">{stat.label}</p>
-                    <Icon className={`w-5 h-5 ${stat.color}`} />
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/register">
+              <Button className="bg-primary text-primary-foreground hover:opacity-90 px-8 py-6 text-lg h-auto">
+                Start Free Scan
+                <ArrowRight className="w-5 h-5" />
+              </Button>
+            </Link>
+            <Button
+              variant="outline"
+              className="border-primary/30 text-foreground hover:bg-primary/10 bg-transparent px-8 py-6 text-lg h-auto"
+            >
+              Watch Demo
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-20 px-4 border-t border-border">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h3 className="text-4xl font-bold mb-4">Powerful Security Features</h3>
+            <p className="text-foreground/60 text-lg">Everything you need to protect your applications</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((feature, i) => {
+              const Icon = feature.icon
+              return (
+                <Card key={i} className="bg-card border-border hover:border-primary/50 transition-all group p-6">
+                  <div className="mb-4">
+                    <Icon className={`w-12 h-12 ${feature.color}`} />
                   </div>
-                  <p className="text-3xl font-bold">{stat.value}</p>
+                  <h4 className="font-semibold text-lg mb-2">{feature.title}</h4>
+                  <p className="text-foreground/60 text-sm">{feature.description}</p>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-20 px-4 border-t border-border">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div className="text-5xl font-bold text-cyan-400 mb-2">10M+</div>
+              <p className="text-foreground/60">Vulnerabilities Detected</p>
+            </div>
+            <div className="text-center">
+              <div className="text-5xl font-bold text-blue-400 mb-2">50K+</div>
+              <p className="text-foreground/60">Active Users</p>
+            </div>
+            <div className="text-center">
+              <div className="text-5xl font-bold text-purple-400 mb-2">99.9%</div>
+              <p className="text-foreground/60">Uptime Guarantee</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section id="testimonials" className="py-20 px-4 border-t border-border">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h3 className="text-4xl font-bold mb-4">Trusted by Industry Leaders</h3>
+            <p className="text-foreground/60 text-lg">Join thousands of companies securing their applications</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {testimonials.map((testimonial, i) => (
+              <Card key={i} className="bg-card border-border p-6">
+                <div className="flex gap-1 mb-4">
+                  {[...Array(5)].map((_, j) => (
+                    <span key={j} className="text-cyan-400">
+                      ★
+                    </span>
+                  ))}
                 </div>
+                <p className="text-foreground/80 mb-4">&ldquo;{testimonial.quote}&rdquo;</p>
+                <p className="font-semibold text-primary">{testimonial.company}</p>
               </Card>
-            )
-          })}
+            ))}
+          </div>
         </div>
+      </section>
 
-        {/* Recent Scans Section */}
-        <div className="mb-8">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-cyan-400" />
-            Recent Scans
-          </h3>
-          <Card className="bg-card border-border overflow-hidden">
-            <div className="divide-y divide-border">
-              {recentScans.map((scan, i) => (
-                <div key={i} className="p-6 hover:bg-primary/10 transition-colors cursor-pointer group">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-lg mb-2">{scan.name}</h4>
-                      <div className="flex items-center gap-4 text-sm text-gray-400">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            scan.status === "Running"
-                              ? "bg-blue-500/20 text-blue-300"
-                              : "bg-green-500/20 text-green-300"
-                          }`}
-                        >
-                          {scan.status}
-                        </span>
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            scan.severity === "Critical"
-                              ? "bg-red-500/20 text-red-300"
-                              : scan.severity === "High"
-                                ? "bg-orange-500/20 text-orange-300"
-                                : "bg-yellow-500/20 text-yellow-300"
-                          }`}
-                        >
-                          {scan.severity}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-red-400">{scan.threats}</p>
-                      <p className="text-xs text-gray-400">threats found</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        {/* CTA Section */}
-        <div className="relative group">
-          <div className="absolute inset-0 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 rounded-xl blur-xl group-hover:blur-2xl transition-all opacity-0 group-hover:opacity-100" />
-          <Card className="relative bg-gradient-to-r from-card to-card border-primary/30 p-8 overflow-hidden">
-            <div className="absolute top-0 left-0 w-40 h-40 bg-cyan-500/5 rounded-full -ml-20 -mt-20" />
-            <div className="relative z-10">
-              <h3 className="text-2xl font-bold mb-3">Start Your Security Scan</h3>
-              <p className="text-gray-400 mb-6">
-                Upload your web application and let our advanced scanner detect vulnerabilities in seconds.
-              </p>
-              <div className="flex gap-4">
-                <Button className="bg-primary text-primary-foreground hover:opacity-90">Upload Project</Button>
-                <Button
-                  variant="outline"
-                  className="border-primary/30 text-foreground hover:bg-primary/10 bg-transparent"
-                >
-                  Learn More
-                </Button>
+      {/* CTA Section */}
+      <section className="py-20 px-4 border-t border-border">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all opacity-0 group-hover:opacity-100" />
+            <Card className="relative bg-gradient-to-r from-card to-card border-primary/30 p-12 text-center overflow-hidden">
+              <div className="absolute top-0 left-0 w-40 h-40 bg-cyan-500/5 rounded-full -ml-20 -mt-20" />
+              <div className="relative z-10">
+                <h3 className="text-3xl font-bold mb-4">Ready to Secure Your Applications?</h3>
+                <p className="text-foreground/70 mb-8 text-lg">
+                  Get started with a free vulnerability scan. No credit card required.
+                </p>
+                <Link href="/register">
+                  <Button className="bg-primary text-primary-foreground hover:opacity-90 px-8 py-6 text-lg h-auto">
+                    Start Free Scan Today
+                  </Button>
+                </Link>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
         </div>
-      </main>
+      </section>
 
       {/* Footer */}
-      <footer className="border-t border-border mt-16 py-8 px-4">
-        <div className="max-w-7xl mx-auto text-center text-gray-400 text-sm">
-          <p>© 2026 SecurityDefender. Protecting your applications from threats.</p>
+      <footer className="border-t border-border py-8 px-4 mt-16">
+        <div className="max-w-7xl mx-auto text-center text-foreground/60 text-sm">
+          <p>© 2026 SecurityDefender. Protecting web applications worldwide.</p>
         </div>
       </footer>
     </div>
   )
 }
-
-export default Dashboard
