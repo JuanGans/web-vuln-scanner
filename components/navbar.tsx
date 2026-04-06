@@ -7,7 +7,7 @@ import { Bell, Search, UserRound } from "lucide-react"
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] })
 
 interface NavbarProps {
-  activePage?: "dashboard" | "projects" | "upload" | "activity"
+  activePage?: "dashboard" | "projects" | "upload" | "scan-result"
 }
 
 export function Navbar({ activePage = "dashboard" }: NavbarProps) {
@@ -15,7 +15,7 @@ export function Navbar({ activePage = "dashboard" }: NavbarProps) {
     { label: "Dashboard", href: "/dashboard", key: "dashboard" },
     { label: "Projects", href: "/projects", key: "projects" },
     { label: "Upload", href: "/upload", key: "upload" },
-    { label: "Activity Log", href: "#", key: "activity" },
+    { label: "Scan Result", href: "/scan-result", key: "scan-result" },
   ]
 
   return (
