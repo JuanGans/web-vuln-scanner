@@ -2,15 +2,30 @@
 
 import { Manrope } from "next/font/google"
 import Link from "next/link"
-import { Bell, Search, UserRound } from "lucide-react"
+import { Bell, Search, UserRound, LogOut, Edit } from "lucide-react"
+import { useState, useRef, useEffect } from "react"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] })
 
 interface NavbarProps {
-  activePage?: "dashboard" | "projects" | "upload" | "scan-result"
+  activePage?: "dashboard" | "projects" | "upload" | "scan-result" | "profile"
 }
 
 export function Navbar({ activePage = "dashboard" }: NavbarProps) {
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
   const navItems = [
     { label: "Dashboard", href: "/dashboard", key: "dashboard" },
     { label: "Projects", href: "/projects", key: "projects" },
@@ -50,14 +65,37 @@ export function Navbar({ activePage = "dashboard" }: NavbarProps) {
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-[#e11d48]" />
           </button>
           <div className="mx-2 h-6 w-px bg-[#e2e8f0]" />
-          <div className="group flex cursor-pointer items-center gap-3 pl-1">
-            <div className="mr-1 hidden flex-col items-end sm:flex">
-              <span className="text-xs font-bold leading-none">Alex Rivera</span>
-              <span className="text-[10px] font-medium leading-tight text-[#64748b]">Security Architect</span>
-            </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f1f5f9] ring-2 ring-[#f1f5f9] transition-all group-hover:ring-[#0052cc]/20">
-              <UserRound className="h-4 w-4 text-[#334155]" />
-            </div>
+          <div className="relative" ref={profileRef}>
+            <button
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className="flex items-center gap-3 pl-1 transition-all hover:opacity-80"
+            >
+              <div className="mr-1 hidden flex-col items-end sm:flex">
+                <span className="text-xs font-bold leading-none">Alex Rivera</span>
+                <span className="text-[10px] font-medium leading-tight text-[#64748b]">Security Architect</span>
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f1f5f9] ring-2 ring-[#f1f5f9] transition-all hover:ring-[#0052cc]/20">
+                <UserRound className="h-4 w-4 text-[#334155]" />
+              </div>
+            </button>
+
+            {/* Profile Dropdown */}
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#e2e8f0] rounded-lg shadow-lg overflow-hidden z-50">
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-[#0f172a] hover:bg-[#f1f5f9] transition-colors border-b border-[#e2e8f0]"
+                  onClick={() => setIsProfileOpen(false)}
+                >
+                  <Edit className="w-4 h-4 text-[#0052cc]" />
+                  Edit Profile
+                </Link>
+                <button className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-[#0f172a] hover:bg-[#f1f5f9] transition-colors text-left">
+                  <LogOut className="w-4 h-4 text-[#e11d48]" />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
