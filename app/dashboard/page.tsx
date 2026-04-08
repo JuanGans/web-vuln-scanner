@@ -15,13 +15,58 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
 
 const inter = Inter({ subsets: ["latin"], weight: ["300", "400", "500", "600"] })
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] })
 
 const bars = [35, 55, 40, 85, 60, 30, 75, 50, 65, 45]
 
+interface ScanHistoryItem {
+  id: string
+  fileName?: string
+  result: Record<string, unknown>
+  createdAt: string
+}
+
 export default function DashboardPage() {
+  const [scanHistory, setScanHistory] = useState<ScanHistoryItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [stats, setStats] = useState({
+    totalAssets: 0,
+    vulnerabilities: 0,
+    highRisk: 0,
+    avgResolution: "4.2",
+  })
+
+  useEffect(() => {
+    const fetchScanHistory = async () => {
+      try {
+        const res = await fetch("/api/history")
+        if (!res.ok) {
+          throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`)
+        }
+        const data = await res.json()
+        setScanHistory(data.data || [])
+
+        // Calculate stats
+        if (data.data && data.data.length > 0) {
+          setStats((prev) => ({
+            ...prev,
+            totalAssets: data.data.length,
+          }))
+        }
+      } catch (error) {
+        console.error("Failed to fetch scan history:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchScanHistory()
+  }, [])
+
   return (
     <div className={`${inter.className} min-h-screen bg-[#fcfdfe] text-[#0f172a] antialiased selection:bg-[#0052cc]/10`}>
       <Navbar activePage="dashboard" />
@@ -55,10 +100,10 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-[#0052cc]/10 p-2.5">
                 <Server className="h-5 w-5 text-[#0052cc]" />
               </div>
-              <span className="rounded-md bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-600">+12.4%</span>
+              <span className="rounded-md bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-600">+{stats.totalAssets}</span>
             </div>
-            <h3 className="mb-0.5 text-xs font-medium uppercase tracking-wider text-[#64748b]">Total Assets</h3>
-            <p className={`${manrope.className} text-3xl font-bold tracking-tight`}>1,284</p>
+            <h3 className="mb-0.5 text-xs font-medium uppercase tracking-wider text-[#64748b]">Total Scans</h3>
+            <p className={`${manrope.className} text-3xl font-bold tracking-tight`}>{stats.totalAssets}</p>
           </div>
 
           <div className="rounded-xl border border-[#f1f5f9] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_-10px_rgba(0,0,0,0.08)]">
@@ -66,10 +111,10 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-[#f1f5f9] p-2.5">
                 <ShieldCheck className="h-5 w-5 text-[#475569]" />
               </div>
-              <span className="rounded-md bg-[#f8fafc] px-2 py-0.5 text-[10px] font-bold text-[#64748b]">Stable</span>
+              <span className="rounded-md bg-[#f8fafc] px-2 py-0.5 text-[10px] font-bold text-[#64748b]">Data Real-time</span>
             </div>
             <h3 className="mb-0.5 text-xs font-medium uppercase tracking-wider text-[#64748b]">Vulnerabilities</h3>
-            <p className={`${manrope.className} text-3xl font-bold tracking-tight`}>42</p>
+            <p className={`${manrope.className} text-3xl font-bold tracking-tight`}>{stats.vulnerabilities}</p>
           </div>
 
           <div className="rounded-xl border border-[#f1f5f9] border-l-4 border-l-[#e11d48] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_-10px_rgba(0,0,0,0.08)]">
@@ -77,10 +122,10 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-[#fff1f2] p-2.5">
                 <ShieldAlert className="h-5 w-5 text-[#e11d48]" />
               </div>
-              <span className="rounded-md bg-[#fff1f2] px-2 py-0.5 text-[10px] font-bold text-[#e11d48]">Urgent</span>
+              <span className="rounded-md bg-[#fff1f2] px-2 py-0.5 text-[10px] font-bold text-[#e11d48]">Monitor</span>
             </div>
             <h3 className="mb-0.5 text-xs font-medium uppercase tracking-wider text-[#64748b]">High Risk</h3>
-            <p className={`${manrope.className} text-3xl font-bold tracking-tight text-[#e11d48]`}>07</p>
+            <p className={`${manrope.className} text-3xl font-bold tracking-tight text-[#e11d48]`}>{stats.highRisk.toString().padStart(2, "0")}</p>
           </div>
 
           <div className="rounded-xl border border-[#f1f5f9] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_-10px_rgba(0,0,0,0.08)]">
@@ -136,10 +181,13 @@ export default function DashboardPage() {
 
             <section className="overflow-hidden rounded-xl border border-[#e2e8f0]/50 bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)]">
               <div className="flex items-center justify-between border-b border-[#e2e8f0]/30 px-8 py-6">
-                <h2 className={`${manrope.className} text-lg font-bold tracking-tight`}>Active Scan Queue</h2>
-                <button className="rounded-md px-3 py-1.5 text-xs font-bold text-[#0052cc] transition-colors hover:bg-[#0052cc]/5">
-                  Manage All
-                </button>
+                <h2 className={`${manrope.className} text-lg font-bold tracking-tight`}>Recent Scans</h2>
+                <Link 
+                  href="/scan-result"
+                  className="rounded-md px-3 py-1.5 text-xs font-bold text-[#0052cc] transition-colors hover:bg-[#0052cc]/5"
+                >
+                  View All
+                </Link>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -151,165 +199,83 @@ export default function DashboardPage() {
                       <th className="px-8 py-4">Risk Profile</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#e2e8f0]/20">
-                    <tr className="group transition-colors hover:bg-[#f1f5f9]/30">
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f1f5f9] transition-colors group-hover:bg-[#0052cc]/10">
-                            <Cloud className="h-[18px] w-[18px] text-[#64748b] transition-colors group-hover:text-[#0052cc]" />
-                          </div>
-                          <div>
-                            <span className="mb-1 block font-bold leading-none text-[#0f172a]">Alpha Cloud Edge</span>
-                            <span className="text-[11px] text-[#64748b]">Production · AWS Oregon</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5">
-                        <span className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[10px] font-extrabold uppercase text-green-700">
-                          Passed
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 text-sm text-[#64748b]">Oct 12, 14:20</td>
-                      <td className="px-8 py-5">
-                        <div className="flex gap-1.5">
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e11d48] shadow-[0_0_8px_rgba(225,29,72,0.4)]" />
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
-                        </div>
-                      </td>
-                    </tr>
-
-                    <tr className="group transition-colors hover:bg-[#f1f5f9]/30">
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f1f5f9] transition-colors group-hover:bg-[#0052cc]/10">
-                            <Database className="h-[18px] w-[18px] text-[#64748b] transition-colors group-hover:text-[#0052cc]" />
-                          </div>
-                          <div>
-                            <span className="mb-1 block font-bold leading-none text-[#0f172a]">Main DB Pipeline</span>
-                            <span className="text-[11px] text-[#64748b]">Critical · Azure East</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-2">
-                          <span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#0052cc]" />
-                          <span className="text-[10px] font-extrabold uppercase text-[#0052cc]">Scanning...</span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5 text-sm text-[#64748b]">Oct 14, 09:12</td>
-                      <td className="px-8 py-5 text-[10px] font-bold uppercase italic text-[#64748b]">Analyzing...</td>
-                    </tr>
-
-                    <tr className="group transition-colors hover:bg-[#f1f5f9]/30">
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f1f5f9] transition-colors group-hover:bg-[#0052cc]/10">
-                            <Globe className="h-[18px] w-[18px] text-[#64748b] transition-colors group-hover:text-[#0052cc]" />
-                          </div>
-                          <div>
-                            <span className="mb-1 block font-bold leading-none text-[#0f172a]">Public API Gateway</span>
-                            <span className="text-[11px] text-[#64748b]">Public · Global</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5">
-                        <span className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[10px] font-extrabold uppercase text-green-700">
-                          Passed
-                        </span>
-                      </td>
-                      <td className="px-8 py-5 text-sm text-[#64748b]">Oct 10, 11:45</td>
-                      <td className="px-8 py-5">
-                        <div className="flex gap-1.5">
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
-                          <div className="h-1.5 w-1.5 rounded-full bg-[#e2e8f0]" />
-                        </div>
-                      </td>
-                    </tr>
+                  <tbody className="divide-y divide-[#e2e8f0]/30">
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-8 text-center text-[#64748b]">
+                          Loading scan data...
+                        </td>
+                      </tr>
+                    ) : scanHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-8 text-center text-[#64748b]">
+                          No scans yet
+                        </td>
+                      </tr>
+                    ) : (
+                      scanHistory.slice(0, 5).map((scan, idx) => (
+                        <tr key={scan.id} className="transition-colors hover:bg-[#f8fafc]/50">
+                          <td className="px-8 py-4">
+                            <Link href={`/scan-result/${scan.id}`} className="font-medium text-[#0052cc] hover:underline">
+                              {scan.fileName || `Scan ${idx + 1}`}
+                            </Link>
+                          </td>
+                          <td className="px-8 py-4">
+                            <span className="inline-block rounded-md bg-green-50 px-2.5 py-1 text-xs font-bold text-green-600">
+                              Complete
+                            </span>
+                          </td>
+                          <td className="px-8 py-4 text-sm text-[#64748b]">
+                            {new Date(scan.createdAt).toLocaleDateString("id-ID")}
+                          </td>
+                          <td className="px-8 py-4 text-sm font-medium text-[#e11d48]">High</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </section>
           </div>
 
-          <div className="space-y-6 lg:col-span-4">
-            <aside className="rounded-xl border border-[#e2e8f0]/30 bg-[#f8fafc] p-7">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className={`${manrope.className} text-lg font-bold tracking-tight`}>Intelligence</h2>
-                <span className="h-2 w-2 rounded-full bg-[#e11d48]" />
+          <aside className="lg:col-span-4 space-y-8">
+            <section className="overflow-hidden rounded-xl border border-[#e2e8f0]/50 bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)]">
+              <div className="border-b border-[#e2e8f0]/30 px-8 py-6">
+                <h2 className={`${manrope.className} font-bold tracking-tight`}>Vulnerability Breakdown</h2>
               </div>
-              <div className="space-y-7">
-                <div className="group flex gap-4">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#fff1f2] transition-transform group-hover:scale-110">
-                    <AlertTriangle className="h-5 w-5 text-[#e11d48]" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-[#0f172a]">Critical Zero-Day: CVE-2024-4210</h4>
-                    <p className="text-xs leading-relaxed text-[#64748b]">
-                      Affecting Node.js runtimes. 14 vulnerable assets found in your perimeter.
-                    </p>
-                    <span className="block pt-1 text-[10px] font-bold uppercase tracking-wider text-[#cbd5e1]">
-                      2h ago · Threat Intel
-                    </span>
-                  </div>
+              <div className="px-8 py-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm font-medium text-[#0f172a]">
+                    <span className="inline-block h-3 w-3 rounded-full bg-[#e11d48]" />
+                    Critical
+                  </span>
+                  <span className="font-bold">8</span>
                 </div>
-                <div className="group flex gap-4">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#0052cc]/10 transition-transform group-hover:scale-110">
-                    <Shield className="h-5 w-5 text-[#0052cc]" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-[#0f172a]">Infrastructure Patch 2.4.1</h4>
-                    <p className="text-xs leading-relaxed text-[#64748b]">
-                      Mandatory security update available for 8 staging environments.
-                    </p>
-                    <span className="block pt-1 text-[10px] font-bold uppercase tracking-wider text-[#cbd5e1]">1d ago · Ops</span>
-                  </div>
+                <div className="w-full bg-[#f1f5f9] rounded-full h-1.5 overflow-hidden">
+                  <div className="bg-[#e11d48] h-full" style={{ width: "45%" }} />
                 </div>
               </div>
-              <button className="mt-8 w-full rounded-lg border border-[#e2e8f0] py-2.5 text-xs font-bold transition-colors hover:bg-[#f1f5f9]">
-                View All Insights
-              </button>
-            </aside>
-          </div>
+            </section>
+
+            <section className="overflow-hidden rounded-xl border border-[#e2e8f0]/50 bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.05),0_1px_2px_-1px_rgb(0_0_0/0.05),0_4px_6px_-1px_rgb(0_0_0/0.02)]">
+              <div className="border-b border-[#e2e8f0]/30 px-8 py-6">
+                <h2 className={`${manrope.className} font-bold tracking-tight`}>Quick Actions</h2>
+              </div>
+              <div className="px-8 py-6 space-y-3">
+                <Link 
+                  href="/upload"
+                  className="block w-full rounded-lg border border-[#0052cc] bg-[#0052cc] text-white py-2 px-4 text-center font-bold transition-all hover:bg-[#0747a6]"
+                >
+                  New Scan
+                </Link>
+                <button className="w-full rounded-lg border border-[#cbd5e1] bg-white py-2 px-4 text-center font-bold text-[#0f172a] transition-colors hover:bg-[#f1f5f9]">
+                  Export Report
+                </button>
+              </div>
+            </section>
+          </aside>
         </div>
       </main>
-
-      <footer className="mt-20 border-t border-[#e2e8f0]/30 bg-white">
-        <div className="mx-auto max-w-7xl px-6 py-12">
-          <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
-            <div className="text-center md:text-left">
-              <span className={`${manrope.className} text-xl font-extrabold tracking-tight text-[#0052cc]`}>CyberGuard</span>
-              <p className="mt-2 text-xs font-medium text-[#64748b]">Intelligence Driven Security Posture Management</p>
-            </div>
-            <div className="flex flex-wrap justify-center gap-10">
-              <a className="text-xs font-bold uppercase tracking-widest text-[#64748b] transition-colors hover:text-[#0052cc]" href="#">
-                Support
-              </a>
-              <a className="text-xs font-bold uppercase tracking-widest text-[#64748b] transition-colors hover:text-[#0052cc]" href="#">
-                Security Docs
-              </a>
-              <a className="text-xs font-bold uppercase tracking-widest text-[#64748b] transition-colors hover:text-[#0052cc]" href="#">
-                Compliance
-              </a>
-              <a className="text-xs font-bold uppercase tracking-widest text-[#64748b] transition-colors hover:text-[#0052cc]" href="#">
-                Privacy
-              </a>
-            </div>
-          </div>
-          <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-[#e2e8f0]/20 pt-8 sm:flex-row">
-            <p className="text-[11px] font-medium text-[#cbd5e1]">© 2024 CyberGuard Sentinel Editorial. All rights reserved.</p>
-            <div className="flex gap-4">
-              <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-[#f1f5f9] transition-colors hover:bg-[#0052cc]/10 hover:text-[#0052cc]">
-                <Globe className="h-[18px] w-[18px]" />
-              </div>
-              <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-[#f1f5f9] transition-colors hover:bg-[#0052cc]/10 hover:text-[#0052cc]">
-                <Share2 className="h-[18px] w-[18px]" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }

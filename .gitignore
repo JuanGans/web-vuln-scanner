@@ -19,9 +19,25 @@ yarn-error.log*
 # env files
 .env*
 
+# uploads
+/uploads
+uploads/
+*.zip
+
+# backup & temporary files
+*-fixed.tsx
+*-new.tsx
+*.bak
+*.tmp
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OS
+.DS_Store
+.vscode/
+.idea/
