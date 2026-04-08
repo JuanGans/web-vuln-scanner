@@ -1,0 +1,3 @@
+[submodule "scanner/securecli"]
+	path = scanner/securecli
+	url = https://github.com/JuanGans/securecli
