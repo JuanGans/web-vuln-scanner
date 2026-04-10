@@ -23,7 +23,7 @@ export default async function handler(
   let scanDirPath = extractPath; // Default untuk ZIP files
 
   try {
-    const { filePath, fileName, fileType } = req.body;
+    const { filePath, fileName, fileType, projectId } = req.body;
 
     if (!filePath) {
       return res.status(400).json({ error: "File path diperlukan" });
@@ -64,6 +64,7 @@ export default async function handler(
     const dbResult = await prisma.scanResult.create({
       data: {
         fileName: fileName || path.basename(filePath),
+        projectId: projectId || null,
         result: scanResult as any,
       },
     });

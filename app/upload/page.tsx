@@ -3,16 +3,28 @@
 import { Inter, Manrope } from "next/font/google"
 import { Navbar } from "@/components/navbar"
 import { Bolt, Check, ChevronDown, CircleCheck, FolderOpen, Search, Upload, AlertCircle } from "lucide-react"
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] })
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
 
+interface Project {
+  id: string
+  name: string
+  description?: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [selectedProject, setSelectedProject] = useState("Main Infrastructure Core")
+  const [projects, setProjects] = useState<Project[]>([])
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true)
+  const [selectedProject, setSelectedProject] = useState("upload-without-project")
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -20,6 +32,31 @@ export default function UploadPage() {
   const [scanResult, setScanResult] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    fetchProjects()
+  }, [])
+
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch("/api/projects")
+      if (!res.ok) throw new Error("Failed to fetch projects")
+      const data = await res.json()
+      setProjects(data.data || [])
+    } catch (err) {
+      console.error("Failed to fetch projects:", err)
+    } finally {
+      setIsLoadingProjects(false)
+    }
+  }
+
+  const getSelectedProjectDisplayName = () => {
+    if (selectedProject === "upload-without-project") {
+      return "Upload without Project"
+    }
+    const project = projects.find((p) => p.id === selectedProject)
+    return project?.name || "Select Project"
+  }
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -110,7 +147,8 @@ export default function UploadPage() {
         body: JSON.stringify({
           filePath: uploadData.filePath,
           fileName: file.name,
-          fileType: uploadData.fileType, // Pass fileType dari upload response
+          fileType: uploadData.fileType,
+          projectId: selectedProject === "upload-without-project" ? null : selectedProject,
         }),
       })
 
@@ -161,18 +199,69 @@ export default function UploadPage() {
                 <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#566166]">
                   <FolderOpen className="h-5 w-5" />
                 </div>
-                <select
-                  value={selectedProject}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  className="w-full appearance-none rounded-[1rem] border-none bg-[#f0f4f7] py-4 pl-12 pr-10 font-semibold text-[#2a3439] transition-all hover:bg-[#e8eff3] focus:ring-2 focus:ring-[#0053db]/20"
+                <button
+                  onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                  className="w-full appearance-none rounded-[1rem] border-none bg-[#f0f4f7] py-4 pl-12 pr-10 font-semibold text-[#2a3439] transition-all hover:bg-[#e8eff3] focus:ring-2 focus:ring-[#0053db]/20 text-left flex items-center justify-between"
                 >
-                  <option>Main Infrastructure Core</option>
-                  <option>Customer Portal API</option>
-                  <option>Legacy Authentication Service</option>
-                </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 transition-colors group-hover:text-[#0053db]">
-                  <ChevronDown className="h-5 w-5 text-slate-400" />
-                </div>
+                  <span>{getSelectedProjectDisplayName()}</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-400 transition-transform ${
+                      showProjectDropdown ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {showProjectDropdown && (
+                  <div className="absolute top-full mt-2 w-full bg-white border border-outline-variant rounded-lg shadow-lg z-10">
+                    {/* Default option: Upload without Project */}
+                    <button
+                      onClick={() => {
+                        setSelectedProject("upload-without-project")
+                        setShowProjectDropdown(false)
+                      }}
+                      className={`w-full text-left px-4 py-3 hover:bg-[#f0f4f7] transition-colors border-b border-outline-variant/50 flex items-center gap-3 ${
+                        selectedProject === "upload-without-project" ? "bg-[#dbe1ff]/20 font-semibold text-[#0053db]" : "text-[#2a3439]"
+                      }`}
+                    >
+                      {selectedProject === "upload-without-project" && <Check className="h-4 w-4 text-[#0053db]" />}
+                      <span className="flex-1">Upload without Project</span>
+                      <span className="text-xs text-on-surface-variant">(Default)</span>
+                    </button>
+
+                    {/* Project options from DB */}
+                    {isLoadingProjects ? (
+                      <div className="px-4 py-3 text-sm text-on-surface-variant text-center">Loading projects...</div>
+                    ) : projects.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-on-surface-variant text-center">
+                        No projects yet.{" "}
+                        <Link href="/projects" className="text-primary hover:underline">
+                          Create one
+                        </Link>
+                      </div>
+                    ) : (
+                      projects.map((project, index) => (
+                        <button
+                          key={project.id}
+                          onClick={() => {
+                            setSelectedProject(project.id)
+                            setShowProjectDropdown(false)
+                          }}
+                          className={`w-full text-left px-4 py-3 hover:bg-[#f0f4f7] transition-colors flex items-center gap-3 ${
+                            selectedProject === project.id ? "bg-[#dbe1ff]/20 font-semibold text-[#0053db]" : "text-[#2a3439]"
+                          } ${index < projects.length - 1 ? "border-b border-outline-variant/50" : ""}`}
+                        >
+                          {selectedProject === project.id && <Check className="h-4 w-4 text-[#0053db]" />}
+                          <div className="flex-1">
+                            <div className="font-semibold">{project.name}</div>
+                            {project.description && (
+                              <div className="text-xs text-on-surface-variant">{project.description}</div>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

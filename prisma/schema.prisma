@@ -18,10 +18,24 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}
+
 model ScanResult {
   id        String   @id @default(uuid())
   fileName  String?
+  projectId String?
   result    Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
 }
