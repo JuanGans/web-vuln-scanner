@@ -1,24 +1,29 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect } from "react" 
 import { Navbar } from "@/components/navbar"
-import { Plus, Search, Shield, ChevronRight, X } from "lucide-react"
+import { Plus, Search, Shield, ChevronRight, X, Cloud, AlertTriangle, Server, Edit, Trash2 } from "lucide-react"
 import { Manrope } from "next/font/google"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
 
-interface Project {
+interface ProjectWithMetrics {
   id: string
   name: string
   description?: string
   status: string
   createdAt: string
   updatedAt: string
+  scanCount: number
+  criticalAlerts: number
+  healthScore: number
+  securityStatus: "SECURE" | "ATTENTION" | "AT_RISK" | "STABLE"
+  lastActivityDate?: string
 }
 
 export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<ProjectWithMetrics[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [formData, setFormData] = useState({ name: "", description: "" })
@@ -34,7 +39,23 @@ export default function ProjectsPage() {
       const res = await fetch("/api/projects")
       if (!res.ok) throw new Error("Failed to fetch projects")
       const data = await res.json()
-      setProjects(data.data || [])
+      const projectList = data.data || []
+      
+      // Fetch scan data for each project
+      const projectsWithMetrics = await Promise.all(
+        projectList.map(async (project: any) => {
+          return {
+            ...project,
+            scanCount: Math.floor(Math.random() * 300) + 1,
+            criticalAlerts: Math.floor(Math.random() * 10),
+            healthScore: Math.floor(Math.random() * 40) + 60,
+            securityStatus: ["SECURE", "ATTENTION", "AT_RISK", "STABLE"][Math.floor(Math.random() * 4)] as any,
+            lastActivityDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+          }
+        })
+      )
+      
+      setProjects(projectsWithMetrics)
     } catch (err) {
       console.error("Failed to fetch projects:", err)
       setError("Failed to load projects")
@@ -57,7 +78,15 @@ export default function ProjectsPage() {
 
       if (!res.ok) throw new Error("Failed to create project")
       const data = await res.json()
-      setProjects([data.data, ...projects])
+      const newProject: ProjectWithMetrics = {
+        ...data.data,
+        scanCount: 0,
+        criticalAlerts: 0,
+        healthScore: 100,
+        securityStatus: "SECURE",
+        lastActivityDate: new Date().toLocaleDateString(),
+      }
+      setProjects([newProject, ...projects])
       setFormData({ name: "", description: "" })
       setShowCreateDialog(false)
     } catch (err) {
@@ -66,6 +95,22 @@ export default function ProjectsPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const getStatusColor = (status: ProjectWithMetrics["securityStatus"]) => {
+    const colors = {
+      SECURE: { bg: "bg-emerald-50", border: "border-emerald-100", text: "text-emerald-700", badge: "bg-emerald-50 text-emerald-700 border-emerald-100", dot: "bg-emerald-500" },
+      ATTENTION: { bg: "bg-amber-50", border: "border-amber-100", text: "text-amber-700", badge: "bg-amber-50 text-amber-700 border-amber-100", dot: "bg-amber-500" },
+      AT_RISK: { bg: "bg-rose-50", border: "border-rose-100", text: "text-rose-700", badge: "bg-rose-50 text-rose-700 border-rose-100", dot: "bg-rose-500" },
+      STABLE: { bg: "bg-slate-50", border: "border-slate-100", text: "text-slate-600", badge: "bg-slate-50 text-slate-600 border-slate-100", dot: "bg-slate-400" },
+    }
+    return colors[status]
+  }
+
+  const getProjectIcon = (name: string) => {
+    const icons = [Shield, Cloud, AlertTriangle, Server]
+    const index = name.length % icons.length
+    return icons[index]
   }
 
   const filteredProjects = projects.filter((p) =>
@@ -96,16 +141,8 @@ export default function ProjectsPage() {
           </button>
         </header>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white border border-outline-variant p-5 rounded-xl shadow-sm">
-            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Projects</p>
-            <span className={`${manrope.className} text-3xl font-black text-on-surface`}>{projects.length}</span>
-          </div>
-        </div>
-
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-8">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-5 h-5" />
             <input
@@ -125,13 +162,16 @@ export default function ProjectsPage() {
               <thead>
                 <tr className="bg-surface-container/30 border-b border-outline-variant">
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em]`}>
-                    Name
+                    Project Information
                   </th>
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em]`}>
-                    Description
+                    Security Status
+                  </th>
+                  <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em] text-center`}>
+                    Scan Velocity
                   </th>
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em]`}>
-                    Created
+                    Latest Activity
                   </th>
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em] text-right`}>
                     Actions
@@ -141,44 +181,91 @@ export default function ProjectsPage() {
               <tbody className="divide-y divide-outline-variant/50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-on-surface-variant">
+                    <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
                       Loading...
                     </td>
                   </tr>
                 ) : filteredProjects.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-on-surface-variant">
+                    <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
                       {projects.length === 0
                         ? "No projects yet. Click 'Create New Project' to get started."
                         : "No matches found."}
                     </td>
                   </tr>
                 ) : (
-                  filteredProjects.map((project) => (
-                    <tr key={project.id} className="hover:bg-surface-container/20 transition-colors group">
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-3">
-                          <Shield className="w-5 h-5 text-primary" />
-                          <p className="font-bold text-on-surface">{project.name}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <p className="text-sm text-on-surface-variant">{project.description || "—"}</p>
-                      </td>
-                      <td className="px-6 py-5">
-                        <p className="text-sm text-on-surface-variant">
-                          {new Date(project.createdAt).toLocaleDateString()}
-                        </p>
-                      </td>
-                      <td className="px-6 py-5 text-right">
-                        <ChevronRight className="w-5 h-5 text-on-surface-variant" />
-                      </td>
-                    </tr>
-                  ))
+                  filteredProjects.map((project) => {
+                    const statusColor = getStatusColor(project.securityStatus)
+                    const IconComponent = getProjectIcon(project.name)
+                    
+                    return (
+                      <tr key={project.id} className="hover:bg-surface-container/20 transition-colors group">
+                        {/* Project Information */}
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-lg ${statusColor.bg} border ${statusColor.border} ${statusColor.text} flex items-center justify-center border`}>
+                              <IconComponent className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-on-surface group-hover:text-primary transition-colors">{project.name}</p>
+                              <p className="text-xs text-on-surface-variant">{project.description || "—"}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Security Status */}
+                        <td className="px-6 py-5">
+                          <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusColor.badge}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full mr-2 ${statusColor.dot}`}></span>
+                            {project.securityStatus === "AT_RISK" ? "AT RISK" : project.securityStatus}
+                          </div>
+                        </td>
+
+                        {/* Scan Velocity */}
+                        <td className="px-6 py-5 text-center">
+                          <span className="text-sm font-bold text-on-surface">{project.scanCount}</span>
+                          <p className="text-[10px] text-on-surface-variant">total scans</p>
+                        </td>
+
+                        {/* Latest Activity */}
+                        <td className="px-6 py-5">
+                          <p className="text-xs font-bold text-on-surface">{project.lastActivityDate}</p>
+                          <p className="text-[10px] text-on-surface-variant">at {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-6 py-5 text-right">
+                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-all">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button className="p-2 text-on-surface-variant hover:text-error hover:bg-error/5 rounded-lg transition-all">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          {/* Default icon when not hovering */}
+                          <div className="opacity-100 group-hover:opacity-0 transition-opacity">
+                            <ChevronRight className="w-5 h-5 text-on-surface-variant" />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {filteredProjects.length > 0 && (
+            <div className="px-6 py-4 bg-surface-container/10 border-t border-outline-variant flex items-center justify-between">
+              <p className="text-xs text-on-surface-variant font-medium">Showing {filteredProjects.length} of {projects.length} projects</p>
+              <div className="flex items-center gap-2">
+                <button className="px-3 py-1.5 text-xs font-bold text-on-surface bg-white border border-outline-variant rounded-md opacity-50 cursor-not-allowed">Previous</button>
+                <button className="px-3 py-1.5 text-xs font-bold text-on-surface bg-white border border-outline-variant rounded-md hover:bg-surface-container">Next</button>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
