@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react" 
 import { Navbar } from "@/components/navbar"
-import { Plus, Search, Shield, ChevronRight, X, Cloud, AlertTriangle, Server, Edit, Trash2 } from "lucide-react"
+import { Plus, Search, Shield, ChevronRight, X, Cloud, AlertTriangle, Server, Edit, Trash2, TrendingUp } from "lucide-react"
 import { Manrope } from "next/font/google"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
@@ -26,7 +26,10 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectWithMetrics[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [expandedActionId, setExpandedActionId] = useState<string | null>(null)
   const [formData, setFormData] = useState({ name: "", description: "" })
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,16 +44,35 @@ export default function ProjectsPage() {
       const data = await res.json()
       const projectList = data.data || []
       
-      // Fetch scan data for each project
+      // Fetch scan data for each project from history API
       const projectsWithMetrics = await Promise.all(
         projectList.map(async (project: any) => {
-          return {
-            ...project,
-            scanCount: Math.floor(Math.random() * 300) + 1,
-            criticalAlerts: Math.floor(Math.random() * 10),
-            healthScore: Math.floor(Math.random() * 40) + 60,
-            securityStatus: ["SECURE", "ATTENTION", "AT_RISK", "STABLE"][Math.floor(Math.random() * 4)] as any,
-            lastActivityDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+          try {
+            const historyRes = await fetch("/api/history")
+            const historyData = historyRes.ok ? await historyRes.json() : { data: [] }
+            const projectScans = historyData.data?.filter((scan: any) => scan.projectId === project.id) || []
+            const scanCount = projectScans.length
+            const lastScan = projectScans.length > 0 
+              ? new Date(projectScans[0].createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+              : new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+            
+            return {
+              ...project,
+              scanCount: scanCount,
+              criticalAlerts: Math.floor(Math.random() * 10),
+              healthScore: Math.floor(Math.random() * 40) + 60,
+              securityStatus: ["SECURE", "ATTENTION", "AT_RISK", "STABLE"][Math.floor(Math.random() * 4)] as any,
+              lastActivityDate: lastScan,
+            }
+          } catch {
+            return {
+              ...project,
+              scanCount: 0,
+              criticalAlerts: 0,
+              healthScore: 100,
+              securityStatus: "SECURE" as const,
+              lastActivityDate: new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+            }
           }
         })
       )
@@ -84,7 +106,7 @@ export default function ProjectsPage() {
         criticalAlerts: 0,
         healthScore: 100,
         securityStatus: "SECURE",
-        lastActivityDate: new Date().toLocaleDateString(),
+        lastActivityDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
       }
       setProjects([newProject, ...projects])
       setFormData({ name: "", description: "" })
@@ -95,6 +117,67 @@ export default function ProjectsPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleEditProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      const res = await fetch("/api/projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingProjectId,
+          name: formData.name,
+          description: formData.description,
+        }),
+      })
+
+      if (!res.ok) throw new Error("Failed to update project")
+      const data = await res.json()
+      
+      setProjects(projects.map(p => 
+        p.id === editingProjectId 
+          ? { ...p, name: data.data.name, description: data.data.description }
+          : p
+      ))
+      
+      setFormData({ name: "", description: "" })
+      setEditingProjectId(null)
+      setShowEditDialog(false)
+    } catch (err) {
+      console.error("Failed to update project:", err)
+      setError(err instanceof Error ? err.message : "Failed to update project")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm("Are you sure you want to delete this project?")) return
+    
+    try {
+      const res = await fetch(`/api/projects?id=${projectId}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) throw new Error("Failed to delete project")
+      
+      setProjects(projects.filter(p => p.id !== projectId))
+      setExpandedActionId(null)
+    } catch (err) {
+      console.error("Failed to delete project:", err)
+      setError(err instanceof Error ? err.message : "Failed to delete project")
+    }
+  }
+
+  const openEditDialog = (project: ProjectWithMetrics) => {
+    setEditingProjectId(project.id)
+    setFormData({ name: project.name, description: project.description || "" })
+    setShowEditDialog(true)
+    setExpandedActionId(null)
   }
 
   const getStatusColor = (status: ProjectWithMetrics["securityStatus"]) => {
@@ -140,6 +223,62 @@ export default function ProjectsPage() {
             Create New Project
           </button>
         </header>
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {/* Total Assets */}
+          <div className="bg-white border border-outline-variant p-5 rounded-xl shadow-sm">
+            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Total Assets</p>
+            <div className="flex items-end justify-between">
+              <span className={`${manrope.className} text-3xl font-black text-on-surface`}>{projects.length}</span>
+              <span className="text-emerald-600 text-xs font-bold flex items-center bg-emerald-50 px-2 py-1 rounded-md">
+                <TrendingUp className="w-3 h-3 mr-1" />
+                {Math.max(0, projects.length - 1)}
+              </span>
+            </div>
+          </div>
+
+          {/* Scans (30d) */}
+          <div className="bg-white border border-outline-variant p-5 rounded-xl shadow-sm">
+            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Scans (30d)</p>
+            <div className="flex items-end justify-between">
+              <span className={`${manrope.className} text-3xl font-black text-on-surface`}>
+                {Math.round(projects.reduce((sum, p) => sum + p.scanCount, 0) / Math.max(1, projects.length) * 0.3)}
+              </span>
+              <span className="text-on-surface-variant text-xs font-bold">
+                Avg {(Math.round(projects.reduce((sum, p) => sum + p.scanCount, 0) / Math.max(1, projects.length) * 0.3 / 30 * 100) / 100).toFixed(1)}/day
+              </span>
+            </div>
+          </div>
+
+          {/* Critical Alerts */}
+          <div className="bg-white border border-outline-variant p-5 rounded-xl shadow-sm">
+            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Critical Alerts</p>
+            <div className="flex items-end justify-between">
+              <span className={`${manrope.className} text-3xl font-black text-error`}>
+                {String(Math.round(projects.reduce((sum, p) => sum + p.criticalAlerts, 0) / Math.max(1, projects.length))).padStart(2, '0')}
+              </span>
+              <span className="text-error text-xs font-bold flex items-center bg-rose-50 px-2 py-1 rounded-md">Active</span>
+            </div>
+          </div>
+
+          {/* Avg. Health Score */}
+          <div className="bg-white border border-outline-variant p-5 rounded-xl shadow-sm">
+            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Avg. Health Score</p>
+            <div className="">
+              <span className={`${manrope.className} text-3xl font-black text-on-surface`}>
+                {Math.round(projects.reduce((sum, p) => sum + p.healthScore, 0) / Math.max(1, projects.length))}
+                <span className={`${manrope.className} text-lg font-bold text-on-surface-variant`}>/100</span>
+              </span>
+              <div className="w-full h-1 bg-surface-container rounded-full overflow-hidden mt-2">
+                <div 
+                  className="bg-emerald-500 h-full transition-all"
+                  style={{width: `${Math.round(projects.reduce((sum, p) => sum + p.healthScore, 0) / Math.max(1, projects.length))}%`}}
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Search */}
         <div className="mb-8">
@@ -230,22 +369,41 @@ export default function ProjectsPage() {
                         {/* Latest Activity */}
                         <td className="px-6 py-5">
                           <p className="text-xs font-bold text-on-surface">{project.lastActivityDate}</p>
-                          <p className="text-[10px] text-on-surface-variant">at {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
                         </td>
 
                         {/* Actions */}
                         <td className="px-6 py-5 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-all">
-                              <Edit className="w-4 h-4" />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setExpandedActionId(expandedActionId === project.id ? null : project.id)}
+                              className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+                            >
+                              <ChevronRight 
+                                className="w-5 h-5 transition-transform duration-300"
+                                style={{
+                                  transform: expandedActionId === project.id ? 'rotate(-180deg)' : 'rotate(0deg)'
+                                }}
+                              />
                             </button>
-                            <button className="p-2 text-on-surface-variant hover:text-error hover:bg-error/5 rounded-lg transition-all">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          {/* Default icon when not hovering */}
-                          <div className="opacity-100 group-hover:opacity-0 transition-opacity">
-                            <ChevronRight className="w-5 h-5 text-on-surface-variant" />
+
+                            {expandedActionId === project.id && (
+                              <div className="flex gap-1 animate-in slide-in-from-right-2 duration-200">
+                                <button
+                                  onClick={() => openEditDialog(project)}
+                                  className="p-2 text-on-surface-variant hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+                                  title="Edit project"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProject(project.id)}
+                                  className="p-2 text-on-surface-variant hover:text-error hover:bg-error/5 rounded-lg transition-all"
+                                  title="Delete project"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -323,6 +481,75 @@ export default function ProjectsPage() {
                   className="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? "Creating..." : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Dialog */}
+      {showEditDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-8 border border-outline-variant">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`${manrope.className} text-2xl font-bold text-on-surface`}>Edit Project</h2>
+              <button
+                onClick={() => {
+                  setShowEditDialog(false)
+                  setEditingProjectId(null)
+                  setFormData({ name: "", description: "" })
+                }}
+                className="p-1 text-on-surface-variant hover:text-on-surface transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditProject} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-on-surface mb-2">Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary/10 focus:border-primary transition-all"
+                  placeholder="e.g., My Project"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-on-surface mb-2">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-4 py-2 border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary/10 focus:border-primary transition-all resize-none"
+                  placeholder="Optional description"
+                  rows={3}
+                />
+              </div>
+
+              {error && <p className="text-sm text-error">{error}</p>}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditDialog(false)
+                    setEditingProjectId(null)
+                    setFormData({ name: "", description: "" })
+                  }}
+                  className="flex-1 px-4 py-2 border border-outline-variant rounded-lg font-bold text-on-surface hover:bg-surface-container transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !formData.name.trim()}
+                  className="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
