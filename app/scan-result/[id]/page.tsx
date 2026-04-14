@@ -24,6 +24,12 @@ const getSeverityColor = (severity: string) => {
 interface ScanDetail {
   id: string
   fileName?: string
+  projectId?: string
+  project?: {
+    id: string
+    name: string
+    description?: string
+  } | null
   result: {
     success?: boolean
     summary?: {
@@ -75,6 +81,7 @@ export default function ScanDetailPage() {
   const router = useRouter()
   const id = params?.id as string
   const [data, setData] = useState<ScanDetail | null>(null)
+  const [allScans, setAllScans] = useState<ScanDetail[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -90,8 +97,11 @@ export default function ScanDetailPage() {
         }
         const allData = await res.json()
 
+        // Store all scans for calculating position
+        setAllScans(allData.data || [])
+
         // Find the specific scan by ID
-        const scanDetail = allData.data?.find((scan: ScanDetail) => scan.id === id)
+        const scanDetail = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === id)
 
         if (scanDetail) {
           setData(scanDetail)
@@ -115,6 +125,34 @@ export default function ScanDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Format date consistently across app
+  const formatScanDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    const month = months[date.getMonth()]
+    const day = date.getDate()
+    const year = date.getFullYear()
+    return `${month} ${day}, ${year}`
+  }
+
+  // Get project name or default
+  const getProjectName = (scan: ScanDetail | null) => {
+    if (!scan) return "Scan"
+    if ((scan as any).project?.name) {
+      return (scan as any).project.name
+    }
+    return "Unassigned Scan"
+  }
+
+  // Calculate scan number within project
+  const getScanNumber = (scan: ScanDetail | null): number => {
+    if (!scan || !allScans.length) return 1
+    const projectScans = allScans.filter((s) => s.projectId === scan.projectId)
+    const scansCount = projectScans.length
+    const scanIndex = projectScans.findIndex((s) => s.id === scan.id)
+    return scansCount - scanIndex // Reverse order for descending display
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background text-on-surface flex flex-col">
@@ -133,7 +171,7 @@ export default function ScanDetailPage() {
         <main className="flex-grow max-w-7xl mx-auto w-full px-8 pt-12 pb-24 flex flex-col items-center justify-center gap-6">
           <p className="text-on-surface-variant text-lg">Scan Result Not Found</p>
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push("/scan-result")}
             className="flex items-center gap-2 px-6 py-2 rounded-full bg-primary text-white font-bold hover:shadow-lg transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -151,7 +189,7 @@ export default function ScanDetailPage() {
       <main className="flex-grow max-w-7xl mx-auto w-full px-8 pt-12 pb-24">
         {/* Back Button */}
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push("/scan-result")}
           className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors mb-8 font-bold"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -167,29 +205,31 @@ export default function ScanDetailPage() {
             SCANS
           </button>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-primary font-bold">{data.fileName || "Scan"}</span>
+          <span className="text-primary font-bold">{getProjectName(data)}</span>
         </div>
 
         {/* Title and Info */}
         <div className="mb-12">
           <h1 className={`${manrope.className} text-5xl font-extrabold tracking-tight text-on-surface mb-4`}>
-            Scan Result: {data.fileName || "Untitled Scan"}
+            Scan Result: {getProjectName(data)}
           </h1>
           <div className="flex flex-wrap gap-6 mt-4">
             <div>
-              <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Scan ID</p>
-              <p className="text-on-surface font-mono font-bold">{data.id}</p>
+              <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Description</p>
+              <p className="text-on-surface font-bold max-w-sm leading-relaxed">
+                {data?.project?.description || (data?.fileName ? `Security scan analysis of ${data.fileName}` : "Security vulnerability scan")}
+              </p>
             </div>
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Scan Date</p>
               <p className="text-on-surface font-bold">
-                {new Date(data.createdAt).toLocaleDateString("id-ID")} at {new Date(data.createdAt).toLocaleTimeString()}
+                {formatScanDate(data.createdAt)}
               </p>
             </div>
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Last Updated</p>
               <p className="text-on-surface font-bold">
-                {new Date(data.updatedAt).toLocaleDateString("id-ID")}
+                {formatScanDate(data.updatedAt)}
               </p>
             </div>
           </div>

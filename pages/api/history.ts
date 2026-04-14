@@ -17,6 +17,15 @@ export default async function handler(
 
   try {
     const data = await prisma.scanResult.findMany({
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
       take: 100, // Limit 100 results
     });

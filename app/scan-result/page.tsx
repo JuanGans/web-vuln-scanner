@@ -21,9 +21,17 @@ import { useEffect, useState } from "react"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
 
+interface Project {
+  id: string
+  name: string
+  description?: string
+}
+
 interface DBScanResult {
   id: string
   fileName?: string
+  projectId?: string
+  project?: Project | null
   result: Record<string, unknown>
   createdAt: string
   updatedAt: string
@@ -104,6 +112,33 @@ export default function ScanResultPage() {
       date: `${month} ${day}, ${year}`,
       time: `${hours}:${minutes} ${ampm}`,
     }
+  }
+
+  // Get project name or default text
+  const getProjectName = (scan: DBScanResult) => {
+    if (scan.project?.name) {
+      return scan.project.name
+    }
+    return "Unassigned Scan"
+  }
+
+  // Get scan number within project (based on creation order)
+  const getScanNumber = (scanId: string): number => {
+    const projectScans = scans.filter((s) => s.projectId === scans.find((x) => x.id === scanId)?.projectId)
+    const scansCount = projectScans.length
+    const scanIndex = projectScans.findIndex((s) => s.id === scanId)
+    return scansCount - scanIndex // Reverse order for descending display
+  }
+
+  // Get scan description or default
+  const getScanDescription = (scan: DBScanResult): string => {
+    if (scan.project?.description) {
+      return scan.project.description
+    }
+    if (scan.fileName) {
+      return `File: ${scan.fileName}`
+    }
+    return "No description"
   }
 
   // Count vulnerabilities by severity
@@ -294,6 +329,8 @@ export default function ScanResultPage() {
                   displayedScans.map((scan, idx) => {
                     const vulnStats = getVulnerabilityStats(scan)
                     const { date: scanDate, time: scanTime } = formatScanDate(scan.createdAt)
+                    const projectName = getProjectName(scan)
+                    const scanDescription = getScanDescription(scan)
 
                     return (
                       <tr key={scan.id} className="hover:bg-surface-container-low/20 transition-colors group border-b border-outline-variant/10">
@@ -303,8 +340,8 @@ export default function ScanResultPage() {
                               {getIconComponent(getIcon(idx))}
                             </div>
                             <div>
-                              <div className="font-bold text-on-surface text-sm mb-0.5">{scan.fileName || "Scan"}</div>
-                              <div className="text-xs font-mono text-on-surface-variant opacity-70">{scan.id.substring(0, 8)}...</div>
+                              <div className="font-bold text-on-surface text-sm mb-0.5">{projectName}</div>
+                              <div className="text-xs text-on-surface-variant opacity-70 line-clamp-2">{scanDescription}</div>
                             </div>
                           </div>
                         </td>

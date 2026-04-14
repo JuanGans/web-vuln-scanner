@@ -25,6 +25,7 @@ model Project {
   status      String   @default("ACTIVE")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  scanResults ScanResult[]
 
   @@index([name])
 }
@@ -33,6 +34,7 @@ model ScanResult {
   id        String   @id @default(uuid())
   fileName  String?
   projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
   result    Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
