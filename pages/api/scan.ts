@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { extractZip, cleanupFolder } from "@/lib/extract";
 import { runSecureCLIScan } from "@/lib/scannerCLI";
+import { enrichScanResult, formatVulnerabilityForDB } from "@/lib/apiEnricher";
 
 type ResponseData = {
   success?: boolean;
@@ -58,24 +59,42 @@ export default async function handler(
 
     // Run scanner pada folder yang sudah disiapkan
     console.log(`Running scanner on: ${scanDirPath}`);
-    const scanResult = await runSecureCLIScan(scanDirPath);
+    const rawScanResult = await runSecureCLIScan(scanDirPath);
+
+    // Enrich scan result dengan remediation data dan metrics
+    const enrichedResult = enrichScanResult(rawScanResult);
 
     // Save result ke database
     const dbResult = await prisma.scanResult.create({
       data: {
         fileName: fileName || path.basename(filePath),
-        projectId: projectId || null,
-        result: scanResult as any,
+        // Use Prisma relationship syntax for projectId
+        ...(projectId && { project: { connect: { id: projectId } } }),
+        result: enrichedResult as any,
+        totalVulnerabilities: enrichedResult.summary.totalVulnerabilities,
+        criticalCount: enrichedResult.summary.vulnerabilitiesBySeverity.CRITICAL,
+        highCount: enrichedResult.summary.vulnerabilitiesBySeverity.HIGH,
+        mediumCount: enrichedResult.summary.vulnerabilitiesBySeverity.MEDIUM,
+        lowCount: enrichedResult.summary.vulnerabilitiesBySeverity.LOW,
+        healthScore: enrichedResult.summary.healthScore,
+        securityStatus: enrichedResult.summary.securityStatus,
       },
     });
 
-    // Return result
+    // Note: Individual vulnerability records can be saved here later if needed
+    // For now, the full result is stored as JSON in the result field
+    console.log(`Scan completed: ${enrichedResult.vulnerabilities.length} vulnerabilities found`);
+    
+    // Optional: Log database save confirmation
+    console.log(`ScanResult saved to database with ID: ${dbResult.id}`);
+
+    // Return enriched result
     res.status(200).json({
       success: true,
       data: {
         id: dbResult.id,
         fileName: dbResult.fileName,
-        result: scanResult,
+        ...enrichedResult,
         createdAt: dbResult.createdAt,
       },
     });

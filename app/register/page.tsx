@@ -6,10 +6,12 @@ import { Shield, Mail, Lock, User, Eye, EyeOff, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
+import { useNotification } from "@/lib/notificationContext"
 
 const RegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -17,6 +19,7 @@ const RegisterPage = () => {
     confirmPassword: "",
     agreeTerms: false,
   })
+  const { addNotification } = useNotification()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, type, value, checked } = e.target
@@ -24,6 +27,54 @@ const RegisterPage = () => {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          password: formData.password,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        addNotification({
+          type: "error",
+          title: "Registration Failed",
+          message: data.error || "Failed to create account",
+        })
+        return
+      }
+
+      // Success
+      addNotification({
+        type: "success",
+        title: "Account Created!",
+        message: "Your account has been successfully created. Redirecting to login...",
+      })
+
+      // Redirect to login
+      setTimeout(() => {
+        window.location.href = "/login"
+      }, 1500)
+    } catch (error) {
+      addNotification({
+        type: "error",
+        title: "Error",
+        message: "An error occurred during registration",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const passwordStrength = {
@@ -66,7 +117,7 @@ const RegisterPage = () => {
         <Card className="bg-card border-border backdrop-blur-xl p-8 mb-6">
           <h2 className="text-xl font-bold mb-6">Create Account</h2>
 
-          <form className="space-y-4">
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {/* Full Name Input */}
             <div>
               <label className="block text-sm font-medium text-foreground/80 mb-2">Full Name</label>
@@ -78,7 +129,8 @@ const RegisterPage = () => {
                   value={formData.fullName}
                   onChange={handleChange}
                   placeholder="John Doe"
-                  className="w-full pl-10 pr-4 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors"
+                  disabled={isLoading}
+                  className="w-full pl-10 pr-4 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors disabled:opacity-50"
                 />
               </div>
             </div>
@@ -94,7 +146,8 @@ const RegisterPage = () => {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors"
+                  disabled={isLoading}
+                  className="w-full pl-10 pr-4 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors disabled:opacity-50"
                 />
               </div>
             </div>
@@ -110,12 +163,14 @@ const RegisterPage = () => {
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-12 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors"
+                  disabled={isLoading}
+                  className="w-full pl-10 pr-12 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors disabled:opacity-50"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-primary/50 hover:text-primary transition-colors"
+                  disabled={isLoading}
+                  className="absolute right-3 top-3 text-primary/50 hover:text-primary transition-colors disabled:opacity-50"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -159,12 +214,14 @@ const RegisterPage = () => {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-12 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors"
+                  disabled={isLoading}
+                  className="w-full pl-10 pr-12 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-foreground/40 transition-colors disabled:opacity-50"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-3 text-primary/50 hover:text-primary transition-colors"
+                  disabled={isLoading}
+                  className="absolute right-3 top-3 text-primary/50 hover:text-primary transition-colors disabled:opacity-50"
                 >
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -187,7 +244,8 @@ const RegisterPage = () => {
                 name="agreeTerms"
                 checked={formData.agreeTerms}
                 onChange={handleChange}
-                className="mt-1 w-4 h-4 rounded border-border cursor-pointer"
+                disabled={isLoading}
+                className="mt-1 w-4 h-4 rounded border-border cursor-pointer disabled:opacity-50"
               />
               <label htmlFor="terms" className="text-sm text-foreground/70 cursor-pointer">
                 I agree to the{" "}
@@ -203,10 +261,11 @@ const RegisterPage = () => {
 
             {/* Sign Up Button */}
             <Button
-              disabled={!isFormValid}
+              type="submit"
+              disabled={!isFormValid || isLoading}
               className="w-full bg-primary text-primary-foreground py-3 rounded-lg hover:opacity-90 transition-opacity font-semibold mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Account
+              {isLoading ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
 

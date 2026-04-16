@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react" 
 import { Navbar } from "@/components/navbar"
-import { Plus, Search, Shield, ChevronRight, X, Cloud, AlertTriangle, Server, Edit, Trash2, TrendingUp } from "lucide-react"
+import { Plus, Search, Shield, ChevronRight, X, Cloud, AlertTriangle, Server, Edit, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { Manrope } from "next/font/google"
+import { useNotification } from "@/lib/notificationContext"
+import { calculateHealthScore, determineSecurityStatus, calculateCriticalAlerts, calculateTrend } from "@/lib/scanResultEnrichment"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
 
@@ -19,6 +21,12 @@ interface ProjectWithMetrics {
   healthScore: number
   securityStatus: "SECURE" | "ATTENTION" | "AT_RISK" | "STABLE"
   lastActivityDate?: string
+  trend?: {
+    previousScore: number | null
+    scoreChange: number
+    direction: 'improved' | 'worsened' | 'stable'
+    percentChange: string
+  }
 }
 
 export default function ProjectsPage() {
@@ -32,6 +40,7 @@ export default function ProjectsPage() {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { addNotification } = useNotification()
 
   useEffect(() => {
     fetchProjects()
@@ -56,13 +65,102 @@ export default function ProjectsPage() {
               ? new Date(projectScans[0].createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
               : new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             
+            // Calculate metrics from most recent scan
+            let criticalAlerts = 0
+            let healthScore = 100
+            let securityStatus: "SECURE" | "ATTENTION" | "AT_RISK" | "STABLE" = "STABLE"
+            let trend: { previousScore: number | null; scoreChange: number; direction: 'improved' | 'worsened' | 'stable'; percentChange: string } = { previousScore: null, scoreChange: 0, direction: 'stable', percentChange: '0' }
+            
+            if (projectScans.length > 0) {
+              const lastScanData = projectScans[0]
+              
+              // Count critical alerts from scan results
+              if (lastScanData.result) {
+                try {
+                  const result = typeof lastScanData.result === "string" 
+                    ? JSON.parse(lastScanData.result) 
+                    : lastScanData.result
+                  
+                  const vulnList = result.vulnerabilities || result.data || []
+                  const vulnerabilityCount = vulnList.length
+                  
+                  // Count by severity (normalize to CRITICAL/HIGH/MEDIUM/LOW)
+                  const criticalCount = vulnList.filter((v: any) => 
+                    v.severity === "Kritis" || v.severity === "CRITICAL" || v.severity === "Critical"
+                  ).length
+                  const highCount = vulnList.filter((v: any) => 
+                    v.severity === "Tinggi" || v.severity === "HIGH" || v.severity === "High"
+                  ).length
+                  const mediumCount = vulnList.filter((v: any) => 
+                    v.severity === "Sedang" || v.severity === "MEDIUM" || v.severity === "Medium"
+                  ).length
+                  const lowCount = vulnList.filter((v: any) => 
+                    v.severity === "Rendah" || v.severity === "LOW" || v.severity === "Low"
+                  ).length
+                  
+                  // Use enhanced calculation with 4 severity levels
+                  healthScore = calculateHealthScore(criticalCount, highCount, mediumCount, lowCount)
+                  securityStatus = determineSecurityStatus(criticalCount, highCount, mediumCount, lowCount, vulnerabilityCount)
+                  criticalAlerts = calculateCriticalAlerts(criticalCount, highCount)
+                } catch (e) {
+                  // If parse fails, use safe defaults
+                  healthScore = 100
+                  securityStatus = "STABLE"
+                }
+              }
+              
+              // Calculate trend from last 2 scans
+              if (projectScans.length >= 2) {
+                const secondLastScanData = projectScans[1]
+                let previousScore = 100
+                
+                if (secondLastScanData.result) {
+                  try {
+                    const prevResult = typeof secondLastScanData.result === "string" 
+                      ? JSON.parse(secondLastScanData.result) 
+                      : secondLastScanData.result
+                    
+                    const prevVulnList = prevResult.vulnerabilities || prevResult.data || []
+                    const prevCriticalCount = prevVulnList.filter((v: any) => 
+                      v.severity === "Kritis" || v.severity === "CRITICAL" || v.severity === "Critical"
+                    ).length
+                    const prevHighCount = prevVulnList.filter((v: any) => 
+                      v.severity === "Tinggi" || v.severity === "HIGH" || v.severity === "High"
+                    ).length
+                    const prevMediumCount = prevVulnList.filter((v: any) => 
+                      v.severity === "Sedang" || v.severity === "MEDIUM" || v.severity === "Medium"
+                    ).length
+                    const prevLowCount = prevVulnList.filter((v: any) => 
+                      v.severity === "Rendah" || v.severity === "LOW" || v.severity === "Low"
+                    ).length
+                    
+                    previousScore = calculateHealthScore(prevCriticalCount, prevHighCount, prevMediumCount, prevLowCount)
+                  } catch (e) {
+                    // Use current as fallback
+                    previousScore = healthScore
+                  }
+                }
+                
+                const trendResult = calculateTrend(healthScore, previousScore)
+                if (trendResult) {
+                  trend = {
+                    previousScore: trendResult.previousScore,
+                    scoreChange: trendResult.scoreChange,
+                    direction: trendResult.trend === 'IMPROVED' ? 'improved' : trendResult.trend === 'WORSENED' ? 'worsened' : 'stable',
+                    percentChange: trendResult.improvementPercentage.toFixed(1),
+                  }
+                }
+              }
+            }
+            
             return {
               ...project,
               scanCount: scanCount,
-              criticalAlerts: Math.floor(Math.random() * 10),
-              healthScore: Math.floor(Math.random() * 40) + 60,
-              securityStatus: ["SECURE", "ATTENTION", "AT_RISK", "STABLE"][Math.floor(Math.random() * 4)] as any,
+              criticalAlerts: criticalAlerts,
+              healthScore: healthScore,
+              securityStatus: securityStatus,
               lastActivityDate: lastScan,
+              trend,
             }
           } catch {
             return {
@@ -72,6 +170,7 @@ export default function ProjectsPage() {
               healthScore: 100,
               securityStatus: "SECURE" as const,
               lastActivityDate: new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+              trend: { previousScore: null, scoreChange: 0, direction: 'stable' as const, percentChange: '0' },
             }
           }
         })
@@ -107,13 +206,29 @@ export default function ProjectsPage() {
         healthScore: 100,
         securityStatus: "SECURE",
         lastActivityDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        trend: { previousScore: null, scoreChange: 0, direction: 'stable', percentChange: '0' },
       }
       setProjects([newProject, ...projects])
       setFormData({ name: "", description: "" })
       setShowCreateDialog(false)
+      
+      // Notification
+      addNotification({
+        type: "success",
+        title: "Project Created",
+        message: `Project "${formData.name}" has been created successfully`,
+      })
     } catch (err) {
       console.error("Failed to create project:", err)
-      setError(err instanceof Error ? err.message : "Failed to create project")
+      const errorMessage = err instanceof Error ? err.message : "Failed to create project"
+      setError(errorMessage)
+      
+      // Notification
+      addNotification({
+        type: "error",
+        title: "Project Creation Failed",
+        message: errorMessage,
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -147,9 +262,24 @@ export default function ProjectsPage() {
       setFormData({ name: "", description: "" })
       setEditingProjectId(null)
       setShowEditDialog(false)
+      
+      // Notification
+      addNotification({
+        type: "success",
+        title: "Project Updated",
+        message: `Project "${formData.name}" has been updated successfully`,
+      })
     } catch (err) {
       console.error("Failed to update project:", err)
-      setError(err instanceof Error ? err.message : "Failed to update project")
+      const errorMessage = err instanceof Error ? err.message : "Failed to update project"
+      setError(errorMessage)
+      
+      // Notification
+      addNotification({
+        type: "error",
+        title: "Project Update Failed",
+        message: errorMessage,
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -165,11 +295,27 @@ export default function ProjectsPage() {
 
       if (!res.ok) throw new Error("Failed to delete project")
       
+      const deletedProject = projects.find(p => p.id === projectId)
       setProjects(projects.filter(p => p.id !== projectId))
       setExpandedActionId(null)
+      
+      // Notification
+      addNotification({
+        type: "success",
+        title: "Project Deleted",
+        message: `Project "${deletedProject?.name}" has been deleted`,
+      })
     } catch (err) {
       console.error("Failed to delete project:", err)
-      setError(err instanceof Error ? err.message : "Failed to delete project")
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete project"
+      setError(errorMessage)
+      
+      // Notification
+      addNotification({
+        type: "error",
+        title: "Project Deletion Failed",
+        message: errorMessage,
+      })
     }
   }
 
@@ -307,6 +453,12 @@ export default function ProjectsPage() {
                     Security Status
                   </th>
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em] text-center`}>
+                    Health Score
+                  </th>
+                  <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em] text-center`}>
+                    Trend
+                  </th>
+                  <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em] text-center`}>
                     Scan Velocity
                   </th>
                   <th className={`${manrope.className} px-6 py-4 text-[11px] font-extrabold text-on-surface-variant uppercase tracking-[0.1em]`}>
@@ -358,6 +510,52 @@ export default function ProjectsPage() {
                             <span className={`w-1.5 h-1.5 rounded-full mr-2 ${statusColor.dot}`}></span>
                             {project.securityStatus === "AT_RISK" ? "AT RISK" : project.securityStatus}
                           </div>
+                        </td>
+
+                        {/* Health Score */}
+                        <td className="px-6 py-5 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-sm font-bold text-on-surface">{project.healthScore}/100</span>
+                            <div className="w-24 h-1.5 bg-surface-container rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${
+                                  project.healthScore >= 75 ? 'bg-emerald-500' :
+                                  project.healthScore >= 50 ? 'bg-amber-500' :
+                                  project.healthScore >= 25 ? 'bg-orange-500' :
+                                  'bg-rose-500'
+                                }`}
+                                style={{width: `${project.healthScore}%`}}
+                              ></div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Trend Indicator */}
+                        <td className="px-6 py-5 text-center">
+                          {project.trend && project.trend.previousScore !== null ? (
+                            <div className="flex flex-col items-center gap-1">
+                              {project.trend.direction === 'improved' && (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-50 rounded-full">
+                                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                                  <span className="text-xs font-bold text-emerald-600">+{project.trend.percentChange}%</span>
+                                </div>
+                              )}
+                              {project.trend.direction === 'worsened' && (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-rose-50 rounded-full">
+                                  <TrendingDown className="w-4 h-4 text-rose-600" />
+                                  <span className="text-xs font-bold text-rose-600">-{Math.abs(parseFloat(project.trend.percentChange))}%</span>
+                                </div>
+                              )}
+                              {project.trend.direction === 'stable' && (
+                                <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 rounded-full">
+                                  <Minus className="w-4 h-4 text-slate-600" />
+                                  <span className="text-xs font-bold text-slate-600">Stabil</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-on-surface-variant">—</span>
+                          )}
                         </td>
 
                         {/* Scan Velocity */}

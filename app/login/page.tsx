@@ -6,14 +6,73 @@ import { useState } from "react"
 import { Shield, Lock, Mail, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { useNotification } from "@/lib/notificationContext"
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({ email: "", password: "" })
+  const { addNotification } = useNotification()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
+
+    try {
+      // Validasi form
+      if (!formData.email || !formData.password) {
+        addNotification({
+          type: "warning",
+          title: "Validation Error",
+          message: "Please fill in all fields",
+        })
+        setIsLoading(false)
+        return
+      }
+
+      // Call login API
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        addNotification({
+          type: "error",
+          title: "Login Failed",
+          message: data.error || "Invalid email or password",
+        })
+        return
+      }
+
+      // Success
+      addNotification({
+        type: "success",
+        title: "Welcome Back!",
+        message: "You have successfully logged in",
+      })
+
+      // Redirect to dashboard
+      setTimeout(() => {
+        window.location.href = "/dashboard"
+      }, 1000)
+    } catch (error) {
+      addNotification({
+        type: "error",
+        title: "Error",
+        message: "An error occurred during login",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -42,7 +101,7 @@ const LoginPage = () => {
         <Card className="bg-card border-border backdrop-blur-xl p-8 mb-6">
           <h2 className="text-xl font-bold mb-6">Sign In to Your Account</h2>
 
-          <form className="space-y-4">
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {/* Email Input */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
@@ -55,6 +114,7 @@ const LoginPage = () => {
                   onChange={handleChange}
                   placeholder="you@example.com"
                   className="w-full pl-10 pr-4 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-gray-500 transition-colors"
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -71,11 +131,13 @@ const LoginPage = () => {
                   onChange={handleChange}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-12 py-3 bg-input border border-border rounded-lg focus:outline-none focus:border-primary text-foreground placeholder-gray-500 transition-colors"
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-3 text-primary/50 hover:text-primary transition-colors"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -85,7 +147,7 @@ const LoginPage = () => {
             {/* Remember & Forgot */}
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-border" />
+                <input type="checkbox" className="w-4 h-4 rounded border-border" disabled={isLoading} />
                 <span className="text-gray-400">Remember me</span>
               </label>
               <a href="#" className="text-primary hover:text-cyan-300 transition-colors">
@@ -94,8 +156,12 @@ const LoginPage = () => {
             </div>
 
             {/* Sign In Button */}
-            <Button className="w-full bg-primary text-primary-foreground py-3 rounded-lg hover:opacity-90 transition-opacity font-semibold mt-6">
-              Sign In
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-primary text-primary-foreground py-3 rounded-lg hover:opacity-90 transition-opacity font-semibold mt-6 disabled:opacity-50"
+            >
+              {isLoading ? "Signing In..." : "Sign In"}
             </Button>
           </form>
 

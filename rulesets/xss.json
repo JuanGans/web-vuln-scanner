@@ -2,77 +2,323 @@
   "rules": [
     {
       "id": "XSS_001",
-      "name": "Echo",
+      "name": "Direct Echo of User Input",
       "type": "XSS",
-      "severity": "HIGH",
-      "confidence": 0.9
+      "severity": "CRITICAL",
+      "confidence": 0.95,
+      "description": "User input echoed directly to output without HTML escaping",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "echo\\s*.*\\$_(GET|POST|REQUEST|COOKIE)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE", "$_SERVER['QUERY_STRING']"],
+      "sinks": ["echo", "print", "printf", "die", "exit"],
+      "sanitizers": ["htmlspecialchars", "htmlentities", "strip_tags", "filter_var"],
+      "vulnerableExample": "<?php echo $_GET['name']; ?>",
+      "secureExample": "<?php echo htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8'); ?>",
+      "recommendation": "Always escape output with htmlspecialchars() or htmlentities() before displaying user-controlled data",
+      "remediationSteps": [
+        "Use htmlspecialchars() for HTML context",
+        "Use htmlentities() for complete HTML encoding",
+        "Specify encoding: ENT_QUOTES and UTF-8",
+        "Consider using templating engines with auto-escaping (Twig, Blade)"
+      ]
     },
     {
       "id": "XSS_002",
-      "name": "Reflected",
+      "name": "Reflected XSS via Query Parameters",
       "type": "XSS",
       "severity": "HIGH",
-      "confidence": 0.85
+      "confidence": 0.90,
+      "description": "User input from URL parameters reflected in HTML without sanitization",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "\\$_(GET|REQUEST)\\[.*\\].*<"
+      },
+      "sources": ["$_GET", "$_REQUEST", "parse_str()"],
+      "sinks": ["echo", "printf", "implode", "join"],
+      "sanitizers": ["htmlspecialchars", "urlencode", "strip_tags"],
+      "vulnerableExample": "<h1>Welcome <?php echo $_GET['user']; ?></h1>",
+      "secureExample": "<h1>Welcome <?php echo htmlspecialchars($_GET['user'], ENT_QUOTES); ?></h1>",
+      "recommendation": "Validate and sanitize all query parameters before displaying them",
+      "remediationSteps": [
+        "Whitelist expected parameters and validate format",
+        "Use htmlspecialchars() with ENT_QUOTES flag",
+        "Implement Content Security Policy (CSP) headers",
+        "Use security headers: X-XSS-Protection, X-Content-Type-Options"
+      ]
     },
     {
       "id": "XSS_003",
-      "name": "ShortEcho",
+      "name": "Short Echo Tag with User Input",
       "type": "XSS",
       "severity": "HIGH",
-      "confidence": 0.88
+      "confidence": 0.88,
+      "description": "Short echo tag <?= ?> outputs user input without escaping",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "<\\?=\\s*\\$_(GET|POST|REQUEST|COOKIE)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["short_echo_tag"],
+      "sanitizers": ["htmlspecialchars", "htmlentities"],
+      "vulnerableExample": "<?= $_POST['comment']; ?>",
+      "secureExample": "<?= htmlspecialchars($_POST['comment'], ENT_QUOTES); ?>",
+      "recommendation": "Use full echo tag with htmlspecialchars() or disable short echo tags if not needed",
+      "remediationSteps": [
+        "Replace <?= ?> with <?php echo htmlspecialchars(...); ?>",
+        "Ensure short_open_tag is properly configured in php.ini",
+        "Use a templating engine that auto-escapes by default"
+      ]
     },
     {
       "id": "XSS_004",
-      "name": "innerHTML",
+      "name": "JavaScript innerHTML with User Input",
       "type": "XSS",
-      "severity": "HIGH",
-      "confidence": 0.85
+      "severity": "CRITICAL",
+      "confidence": 0.92,
+      "description": "DOM innerHTML property set with unsanitized user input in JavaScript",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "innerHTML\\s*=.*[^\\w\\s'\"]"
+      },
+      "sources": ["user input", "API responses", "window.location"],
+      "sinks": ["innerHTML", "insertAdjacentHTML"],
+      "sanitizers": ["textContent", "innerText", "DOMPurify"],
+      "vulnerableExample": "document.getElementById('output').innerHTML = userInput;",
+      "secureExample": "document.getElementById('output').textContent = userInput; // or use DOMPurify library",
+      "recommendation": "Use textContent instead of innerHTML, or sanitize with DOMPurify library",
+      "remediationSteps": [
+        "Use textContent or innerText for plain text (safer)",
+        "Use DOMPurify library if HTML output is necessary",
+        "Use Framework-specific templating (React, Vue auto-escape)",
+        "Never use innerHTML with user input directly"
+      ]
     },
     {
       "id": "XSS_005",
-      "name": "EventHandlers",
+      "name": "Event Handler Injection",
       "type": "XSS",
       "severity": "HIGH",
-      "confidence": 0.88
+      "confidence": 0.88,
+      "description": "User input injected into event handler attributes (onclick, onload, etc.)",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "on(click|load|error|mouseover)\\s*=\\s*['\"].*\\$_(GET|POST)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST"],
+      "sinks": ["event_handlers"],
+      "sanitizers": ["htmlspecialchars", "urlencode"],
+      "vulnerableExample": "<div onclick=\"alert('<?php echo $_GET['msg']; ?>')\"></div>",
+      "secureExample": "<div onclick=\"alert('<?php echo htmlspecialchars($_GET['msg'], ENT_QUOTES); ?>')\"></div>",
+      "recommendation": "Always escape user input in event handlers or use addEventListener in JavaScript",
+      "remediationSteps": [
+        "Escape user input in event handler attributes",
+        "Use addEventListener() instead of inline event handlers",
+        "Implement Content Security Policy (CSP) to prevent inline scripts"
+      ]
     },
     {
       "id": "XSS_006",
-      "name": "StoredXSS",
+      "name": "Stored XSS via Database",
       "type": "XSS",
       "severity": "CRITICAL",
-      "confidence": 0.9
+      "confidence": 0.90,
+      "description": "Unsanitized user input stored in database and executed later",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "INSERT|UPDATE.*\\$_(GET|POST).*SELECT.*echo|print"
+      },
+      "sources": ["$_GET", "$_POST", "file_get_contents"],
+      "sinks": ["INSERT", "UPDATE", "database_write"],
+      "sanitizers": ["mysqli_real_escape_string", "prepared_statements"],
+      "vulnerableExample": "$comment = $_POST['comment']; mysqli_query($conn, \"INSERT INTO comments VALUES ('$comment')\"); // then later: echo $comment;",
+      "secureExample": "$stmt = $conn->prepare(\"INSERT INTO comments VALUES (?)\"); $stmt->bind_param('s', $_POST['comment']); $stmt->execute(); // then later: echo htmlspecialchars($comment);",
+      "recommendation": "Use prepared statements for database operations AND escape output when displaying",
+      "remediationSteps": [
+        "Use prepared statements for data insertion",
+        "Validate and sanitize input on storage",
+        "ALWAYS escape output when retrieving from database (defense in depth)",
+        "Implement input validation whitelist"
+      ]
     },
     {
       "id": "XSS_007",
-      "name": "Interpolation",
+      "name": "String Interpolation in HTML",
       "type": "XSS",
       "severity": "MEDIUM",
-      "confidence": 0.75
+      "confidence": 0.75,
+      "description": "String interpolation or variable embedding in HTML without escaping",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "\\$\\{.*\\}|\".*\\$\\w+.*\"|'.*\\$\\w+.*'"
+      },
+      "sources": ["variables", "template literals"],
+      "sinks": ["template_strings", "html_injection"],
+      "sanitizers": ["htmlspecialchars", "template_escape"],
+      "vulnerableExample": "const html = `<p>${userInput}</p>`;",
+      "secureExample": "const html = `<p>${escapeHtml(userInput)}</p>`; // or use React/Vue framework",
+      "recommendation": "Use framework templating with auto-escaping or implement escaping function",
+      "remediationSteps": [
+        "Use React, Vue, or framework with auto-escaping",
+        "Implement custom escapeHtml() function",
+        "Never build HTML strings manually",
+        "Use template libraries with auto-escaping (e.g., Handlebars)"
+      ]
     },
     {
       "id": "XSS_008",
-      "name": "ScriptInjection",
+      "name": "Script Tag Injection",
       "type": "XSS",
       "severity": "CRITICAL",
-      "confidence": 0.95
+      "confidence": 0.95,
+      "description": "User input used to create or modify script tags",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "<script[^>]*>.*\\$_(GET|POST)|src\\s*=\\s*['\"].*\\$_(GET|POST)"
+      },
+      "sources": ["$_GET", "$_POST", "external_urls"],
+      "sinks": ["script_tag", "eval", "Function"],
+      "sanitizers": ["strip_tags", "DOMPurify"],
+      "vulnerableExample": "<script src=\"<?php echo $_GET['script']; ?>\"></script>",
+      "secureExample": "// Don't include user input in script src. Use whitelisted scripts only or use data attributes",
+      "recommendation": "Never include user input in script tags. Use static script references or API endpoints",
+      "remediationSteps": [
+        "Never include user input in script src attribute",
+        "Use API endpoints for dynamic content loading",
+        "Implement Content Security Policy (CSP) with strict script-src",
+        "Use subresource integrity (SRI) for external scripts"
+      ]
     },
     {
       "id": "XSS_009",
-      "name": "SVG",
+      "name": "SVG/Vector Graphics Injection",
       "type": "XSS",
       "severity": "MEDIUM",
-      "confidence": 0.8
+      "confidence": 0.80,
+      "description": "User input injected into SVG or vector graphics with event handlers",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "<svg[^>]*>|<image[^>]*>.*\\$_(GET|POST)|on\\w+.*=.*['\"]"
+      },
+      "sources": ["$_GET", "$_POST", "user_files"],
+      "sinks": ["svg_tag", "image_tag"],
+      "sanitizers": ["strip_tags", "DOMPurify"],
+      "vulnerableExample": "<svg><script><?php echo $_GET['payload']; ?></script></svg>",
+      "secureExample": "Use DOMPurify to sanitize SVG or serve user SVGs as static files only",
+      "recommendation": "Sanitize SVG content with DOMPurify or serve user SVGs as static assets with proper headers",
+      "remediationSteps": [
+        "Use DOMPurify library for SVG sanitization",
+        "Set Content-Type: image/svg+xml header for static SVG files",
+        "Implement CSP with img-src and object-src directives"
+      ]
     },
     {
       "id": "XSS_010",
-      "name": "URLScheme",
+      "name": "URL Scheme Injection (javascript:)",
       "type": "XSS",
       "severity": "MEDIUM",
-      "confidence": 0.82
+      "confidence": 0.82,
+      "description": "User input in href or src attributes allows javascript: protocol execution",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "href\\s*=|src\\s*=.*javascript:|data:\\s*text/html"
+      },
+      "sources": ["$_GET", "$_POST", "user_urls"],
+      "sinks": ["href", "src", "data_attributes"],
+      "sanitizers": ["filter_var", "preg_match_whitelist"],
+      "vulnerableExample": "<a href=\"<?php echo $_GET['url']; ?>\">Click</a>",
+      "secureExample": "<a href=\"<?php echo htmlspecialchars($_GET['url'], ENT_QUOTES); ?>\">Click</a> // or validate URL scheme",
+      "recommendation": "Validate URLs to ensure safe protocols (http, https, mailto) and escape output",
+      "remediationSteps": [
+        "Whitelist allowed URL schemes (http, https, mailto, tel)",
+        "Use filter_var() with FILTER_VALIDATE_URL",
+        "Escape output with htmlspecialchars()",
+        "Implement CSP with frame-src and script-src directives"
+      ]
+    },
+    {
+      "id": "XSS_011",
+      "name": "DOM-based XSS via window.location",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.85,
+      "description": "JavaScript uses URL parameters without sanitization",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "window\\.location|document\\.URL|location\\.search|document\\.referrer"
+      },
+      "sources": ["window.location", "URL parameters", "hash"],
+      "sinks": ["innerHTML", "eval", "Function"],
+      "sanitizers": ["DOMPurify", "textContent"],
+      "vulnerableExample": "var param = new URLSearchParams(window.location.search); document.getElementById('output').innerHTML = param.get('name');",
+      "secureExample": "var param = new URLSearchParams(window.location.search); document.getElementById('output').textContent = param.get('name');",
+      "recommendation": "Use textContent instead of innerHTML for URL parameter display or sanitize with DOMPurify",
+      "remediationSteps": [
+        "Use textContent or innerText instead of innerHTML",
+        "Sanitize with DOMPurify library",
+        "Validate URL parameters server-side",
+        "Use Framework-based routing to prevent direct URL manipulation"
+      ]
+    },
+    {
+      "id": "XSS_012",
+      "name": "CSS Injection",
+      "type": "XSS",
+      "severity": "LOW",
+      "confidence": 0.70,
+      "description": "User input in style attributes can cause visual manipulation or data exfiltration",
+      "cweid": "CWE-79",
+      "owaspid": "A03",
+      "pattern": {
+        "type": "regex",
+        "value": "style\\s*=|<style[^>]*>.*\\$_(GET|POST)"
+      },
+      "sources": ["$_GET", "$_POST", "user_styles"],
+      "sinks": ["style_attribute", "style_tag"],
+      "sanitizers": ["strip_tags", "preg_match_whitelist"],
+      "vulnerableExample": "<div style=\"<?php echo $_GET['color']; ?>\">Content</div>",
+      "secureExample": "<div style=\"color: <?php echo htmlspecialchars($_GET['color'], ENT_QUOTES); ?>;\">Content</div> // or use class-based styling",
+      "recommendation": "Avoid user input in style attributes. Use CSS classes and validation instead",
+      "remediationSteps": [
+        "Use predefined CSS classes instead of inline styles",
+        "If user styles needed, use CSS property whitelist (color, font-size only)",
+        "Implement Content Security Policy with style-src directive",
+        "Never allow user input to define CSS selectors or @import rules"
+      ]
     }
   ],
   "metadata": {
-    "version": "1.0",
-    "totalRules": 10
+    "version": "2.0",
+    "lastUpdated": "2026-04-16",
+    "totalRules": 12,
+    "severityBreakdown": {
+      "CRITICAL": 5,
+      "HIGH": 4,
+      "MEDIUM": 2,
+      "LOW": 1
+    }
   }
 }

@@ -6,6 +6,7 @@ import { Bolt, Check, ChevronDown, CircleCheck, FolderOpen, Search, Upload, Aler
 import { useRef, useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useNotification } from "@/lib/notificationContext"
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] })
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
@@ -32,6 +33,7 @@ export default function UploadPage() {
   const [scanResult, setScanResult] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { addNotification } = useNotification()
 
   useEffect(() => {
     fetchProjects()
@@ -110,11 +112,23 @@ export default function UploadPage() {
   const handleStartScan = async () => {
     if (!file) {
       setError("Pilih file terlebih dahulu")
+      addNotification({
+        type: "warning",
+        title: "File Required",
+        message: "Please select a file to scan",
+      })
       return
     }
 
     setIsLoading(true)
     setError(null)
+
+    // Notification: Upload start (info - auto-delete)
+    addNotification({
+      type: "info",
+      title: "Upload Starting",
+      message: `Uploading ${file.name}...`,
+    })
 
     try {
       setCurrentStep("upload")
@@ -140,7 +154,22 @@ export default function UploadPage() {
 
       const uploadData = await uploadRes.json()
 
+      // Notification: Upload success (info - auto-delete after 5s, then scan starts)
+      addNotification({
+        type: "info",
+        title: "Upload Successful",
+        message: "File uploaded successfully. Starting scan...",
+      })
+
       setCurrentStep("scanning")
+      
+      // Notification: Scan start (info - auto-delete)
+      addNotification({
+        type: "info",
+        title: "Scanning Started",
+        message: "Analyzing vulnerabilities...",
+      })
+
       const scanRes = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,9 +196,24 @@ export default function UploadPage() {
       const scanData = await scanRes.json()
       setScanResult(scanData.data)
       setCurrentStep("completed")
+
+      // Notification: Scan success (success - persistent)
+      addNotification({
+        type: "success",
+        title: "Scan Completed",
+        message: `Found ${scanData.data?.vulnerabilityCount || 0} vulnerabilities`,
+      })
     } catch (err) {
-      setError(String(err))
+      const errorMessage = String(err)
+      setError(errorMessage)
       setCurrentStep("upload")
+
+      // Notification: Error (error - persistent for critical issues)
+      addNotification({
+        type: "error",
+        title: "Scan Failed",
+        message: errorMessage,
+      })
     } finally {
       setIsLoading(false)
     }

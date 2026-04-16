@@ -1,10 +1,13 @@
 "use client"
 
 import { Navbar } from "@/components/navbar"
+import { RemediationCard } from "@/components/RemediationCard"
+import { TrendChart } from "@/components/TrendChart"
 import { ChevronRight, Copy, ArrowLeft } from "lucide-react"
 import { Manrope } from "next/font/google"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { getRemediationGuide } from "@/lib/remediationGuide"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["200", "400", "600", "800"] })
 
@@ -303,6 +306,54 @@ export default function ScanDetailPage() {
               <p className="text-on-surface-variant text-center py-8">No vulnerabilities found</p>
             )}
           </div>
+
+          {/* Remediation Guidance Section */}
+          {data.result?.vulnerabilities && data.result.vulnerabilities.length > 0 && (
+            <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
+              <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6`}>📚 Panduan Perbaikan</h2>
+              <p className="text-on-surface-variant mb-6">
+                Berikut adalah langkah-langkah detail untuk memperbaiki setiap kerentanan yang ditemukan. Klik pada setiap guide untuk melihat contoh kode dan best practices.
+              </p>
+              <div className="space-y-6">
+                {data.result.vulnerabilities.map((vuln, idx: number) => {
+                  // Map vulnerability type to rule ID
+                  let ruleId = `${vuln.type === "XSS" ? "XSS" : "SQLI"}_001`
+                  
+                  // Try to get remediation guide
+                  try {
+                    const guide = getRemediationGuide(ruleId)
+                    if (guide) {
+                      // Map severity for RemediationCard
+                      const severityMap = {
+                        "Kritis": "CRITICAL",
+                        "Tinggi": "HIGH",
+                        "Sedang": "MEDIUM",
+                        "Rendah": "LOW"
+                      } as Record<string, "CRITICAL" | "HIGH" | "MEDIUM" | "LOW">
+                      
+                      return (
+                        <RemediationCard
+                          key={idx}
+                          ruleName={guide.ruleName}
+                          severity={severityMap[vuln.severity] || "MEDIUM"}
+                          riskDescription={guide.riskDescription}
+                          whyItsDangerous={guide.whyItsDangerous}
+                          stepByStepFix={guide.stepByStepFix}
+                          beforeCode={guide.beforeCode}
+                          afterCode={guide.afterCode}
+                          bestPractices={guide.bestPractices}
+                          additionalResources={guide.additionalResources}
+                        />
+                      )
+                    }
+                  } catch (e) {
+                    console.warn(`Could not load remediation for rule: ${ruleId}`)
+                  }
+                  return null
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Raw Results Display */}
           <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">

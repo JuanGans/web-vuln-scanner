@@ -11,33 +11,66 @@ datasource db {
 }
 
 model User {
-  id    String @id @default(uuid())
-  email String @unique
-  name  String?
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Project {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   name        String
   description String?
-  status      String   @default("ACTIVE")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String       @default("ACTIVE")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   scanResults ScanResult[]
 
   @@index([name])
 }
 
 model ScanResult {
-  id        String   @id @default(uuid())
-  fileName  String?
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id])
-  result    Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   String          @id @default(uuid())
+  fileName             String?
+  projectId            String?
+  project              Project?        @relation(fields: [projectId], references: [id])
+  result               Json // Full scan result (legacy)
+  totalVulnerabilities Int             @default(0)
+  criticalCount        Int             @default(0)
+  highCount            Int             @default(0)
+  mediumCount          Int             @default(0)
+  lowCount             Int             @default(0)
+  healthScore          Int             @default(100)
+  securityStatus       String          @default("SECURE") // SECURE, ATTENTION, AT_RISK, STABLE
+  vulnerabilities      Vulnerability[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   @@index([projectId])
+}
+
+model Vulnerability {
+  id                String     @id @default(uuid())
+  scanResultId      String
+  scanResult        ScanResult @relation(fields: [scanResultId], references: [id], onDelete: Cascade)
+  ruleId            String // XSS_001, SQLI_001, etc.
+  ruleName          String
+  vulnerabilityType String // XSS, SQLI
+  severity          String // CRITICAL, HIGH, MEDIUM, LOW
+  confidence        Float      @default(0.0)
+  filePath          String
+  lineNumber        Int
+  codeSnippet       String?    @db.Text
+  description       String?    @db.Text
+  cweid             String?
+  owaspid           String?
+  recommendation    String?    @db.Text
+  vulnerableExample String?    @db.Text
+  secureExample     String?    @db.Text
+  remediationSteps  String?    @db.Text // JSON array as string
+  createdAt         DateTime   @default(now())
+
+  @@index([scanResultId])
+  @@index([ruleId])
 }
