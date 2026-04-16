@@ -1,0 +1,78 @@
+{
+  "rules": [
+    {
+      "id": "XSS_001",
+      "name": "Echo",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.9
+    },
+    {
+      "id": "XSS_002",
+      "name": "Reflected",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.85
+    },
+    {
+      "id": "XSS_003",
+      "name": "ShortEcho",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.88
+    },
+    {
+      "id": "XSS_004",
+      "name": "innerHTML",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.85
+    },
+    {
+      "id": "XSS_005",
+      "name": "EventHandlers",
+      "type": "XSS",
+      "severity": "HIGH",
+      "confidence": 0.88
+    },
+    {
+      "id": "XSS_006",
+      "name": "StoredXSS",
+      "type": "XSS",
+      "severity": "CRITICAL",
+      "confidence": 0.9
+    },
+    {
+      "id": "XSS_007",
+      "name": "Interpolation",
+      "type": "XSS",
+      "severity": "MEDIUM",
+      "confidence": 0.75
+    },
+    {
+      "id": "XSS_008",
+      "name": "ScriptInjection",
+      "type": "XSS",
+      "severity": "CRITICAL",
+      "confidence": 0.95
+    },
+    {
+      "id": "XSS_009",
+      "name": "SVG",
+      "type": "XSS",
+      "severity": "MEDIUM",
+      "confidence": 0.8
+    },
+    {
+      "id": "XSS_010",
+      "name": "URLScheme",
+      "type": "XSS",
+      "severity": "MEDIUM",
+      "confidence": 0.82
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "totalRules": 10
+  }
+}

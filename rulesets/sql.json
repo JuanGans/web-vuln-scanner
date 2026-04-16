@@ -1,0 +1,271 @@
+{
+  "rules": [
+    {
+      "id": "SQLI_001",
+      "name": "Direct Variable in SQL Query",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.95,
+      "description": "Variable directly embedded in SQL query without parameterized statement",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE).+(\\.\\s*\\$|\\{\\s*\\$|\"\\s*\\.\\s*\\$)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE", "$_SERVER['QUERY_STRING']"],
+      "sinks": ["mysqli_query", "mysql_query", "exec", "system", "passthru", "shell_exec"],
+      "sanitizers": ["mysqli_real_escape_string", "mysql_real_escape_string", "addslashes"],
+      "vulnerableExample": "$query = \"SELECT * FROM users WHERE id=\" . $_GET['id']; mysqli_query($conn, $query);",
+      "secureExample": "$stmt = $conn->prepare('SELECT * FROM users WHERE id=?'); $stmt->bind_param('i', $_GET['id']);",
+      "recommendation": "Use prepared statements with parameterized queries. Never concatenate user input directly into SQL queries.",
+      "remediationSteps": [
+        "Use prepared statements (prepared/parameterized queries)",
+        "Use parameterized queries with placeholders (?)",
+        "Implement input validation and whitelist known safe values",
+        "Use ORM frameworks that handle parameterization automatically"
+      ]
+    },
+    {
+      "id": "SQLI_002",
+      "name": "SQL Injection via String Concatenation",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.92,
+      "description": "User input concatenated with SQL query using dot operator",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "\".*\"\\s*\\.\\s*\\$_(GET|POST|REQUEST|COOKIE)|\\$\\w+\\s*\\.=\\s*\\$_(GET|POST|REQUEST|COOKIE)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["mysqli_query", "mysql_query", "pg_query", "mssql_query"],
+      "sanitizers": ["mysqli_real_escape_string", "intval", "floatval", "prepared statements"],
+      "vulnerableExample": "$username = $_POST['username']; $query = \"SELECT * FROM users WHERE username='\" . $username . \"'\"; mysqli_query($conn, $query);",
+      "secureExample": "$username = $_POST['username']; $stmt = $conn->prepare('SELECT * FROM users WHERE username=?'); $stmt->bind_param('s', $username);",
+      "recommendation": "Use stored procedures or prepared statements instead of string concatenation",
+      "remediationSteps": [
+        "Replace concatenation with prepared statements",
+        "Use PDO with parameterized queries",
+        "Implement whitelist validation for known safe columns/tables",
+        "Use database abstraction layers"
+      ]
+    },
+    {
+      "id": "SQLI_003",
+      "name": "mysqli_query with Unsanitized Input",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.90,
+      "description": "mysqli_query used with user input without proper escaping or parameterization",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "mysqli_query\\s*\\([^,]+,\\s*[^)]*\\$_(GET|POST|REQUEST|COOKIE)|mysqli_query\\s*\\([^,]+,\\s*\\\"[^\\\"]*\\$"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["mysqli_query"],
+      "sanitizers": ["mysqli_real_escape_string", "prepared statements", "parameterized query"],
+      "vulnerableExample": "mysqli_query($conn, \"SELECT * FROM users WHERE id=\" . $_GET['id']);",
+      "secureExample": "$stmt = $conn->prepare('SELECT * FROM users WHERE id=?'); $stmt->bind_param('i', $_GET['id']); $stmt->execute();",
+      "recommendation": "Use prepared statements with mysqli instead of directly passing user input to mysqli_query",
+      "remediationSteps": [
+        "Use $conn->prepare() for prepared statements",
+        "Use bind_param() to bind user input to placeholders",
+        "Execute the prepared statement",
+        "Fetch results using get_result() or bind_result()"
+      ]
+    },
+    {
+      "id": "SQLI_004",
+      "name": "mysql_query with Unsanitized Input (Deprecated)",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.88,
+      "description": "Deprecated mysql_query() used with user input. This extension was removed in PHP 7.0",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "mysql_query\\s*\\([^)]*\\$_(GET|POST|REQUEST|COOKIE)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["mysql_query"],
+      "sanitizers": ["mysql_real_escape_string", "prepared statements"],
+      "vulnerableExample": "mysql_query(\"SELECT * FROM users WHERE id=\" . $_GET['id']);",
+      "secureExample": "// Use MySQLi or PDO instead - mysql_* functions are deprecated",
+      "recommendation": "Migrate from deprecated mysql_* functions to MySQLi or PDO with prepared statements",
+      "remediationSteps": [
+        "Replace mysql_* functions with mysqli_* or PDO equivalents",
+        "Use prepared statements exclusively",
+        "Update database connection code",
+        "Test all database queries thoroughly"
+      ]
+    },
+    {
+      "id": "SQLI_005",
+      "name": "PDO Query without Prepared Statement",
+      "type": "SQLI",
+      "severity": "HIGH",
+      "confidence": 0.85,
+      "description": "PDO query() method used instead of prepare() for parameterized queries",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "->query\\s*\\([^)]*\\$_(GET|POST|REQUEST|COOKIE)|\\$pdo->query\\s*\\("
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["query", "execute"],
+      "sanitizers": ["prepare", "bindParam", "bindValue"],
+      "vulnerableExample": "$pdo->query(\"SELECT * FROM users WHERE id=\" . $_GET['id']);",
+      "secureExample": "$stmt = $pdo->prepare('SELECT * FROM users WHERE id=?'); $stmt->execute([$_GET['id']]);",
+      "recommendation": "Use PDO prepared statements with bindParam or bindValue instead of direct query()",
+      "remediationSteps": [
+        "Use PDOStatement::prepare() to create a prepared statement",
+        "Use bindParam() for named or positional placeholders",
+        "Use execute() to run the prepared statement",
+        "Avoid using query() with user input"
+      ]
+    },
+    {
+      "id": "SQLI_006",
+      "name": "SQL Variable Interpolation",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.90,
+      "description": "Variable interpolated directly inside double-quoted SQL string",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "\\$query\\s*=\\s*\"[^\"]*\\$[a-zA-Z_][a-zA-Z0-9_]*[^\"]*\"|\\$sql\\s*=\\s*\"[^\"]*\\$[a-zA-Z_][a-zA-Z0-9_]*[^\"]*\""
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["mysqli_query", "mysql_query", "pg_query"],
+      "sanitizers": ["intval", "floatval", "in_array", "prepared statements"],
+      "vulnerableExample": "$id = $_GET['id']; $query = \"SELECT * FROM users WHERE user_id = '$id'\"; mysqli_query($conn, $query);",
+      "secureExample": "$id = $_GET['id']; $stmt = $conn->prepare('SELECT * FROM users WHERE user_id = ?'); $stmt->bind_param('i', $id);",
+      "recommendation": "Avoid variable interpolation in SQL strings. Use prepared statements instead",
+      "remediationSteps": [
+        "Replace interpolated variables with parameterized placeholders",
+        "Use prepared statements with bind_param() or bindValue()",
+        "Utilize named parameters for better readability",
+        "Validate input type (is it numeric? string? etc)"
+      ]
+    },
+    {
+      "id": "SQLI_007",
+      "name": "SQL Injection in WHERE Clause",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.92,
+      "description": "WHERE clause constructed with user input without parameterization",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "WHERE\\s+[^=]*=\\s*['\"]?\\s*\\$_(GET|POST|REQUEST|COOKIE)|WHERE\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*=\\s*['\"]\\s*\\.\\s*\\$"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["WHERE", "query"],
+      "sanitizers": ["prepared statements", "intval", "in_array"],
+      "vulnerableExample": "$username = $_GET['username']; $query = \"SELECT * FROM users WHERE username='$username'\";",
+      "secureExample": "$username = $_GET['username']; $stmt = $conn->prepare('SELECT * FROM users WHERE username=?'); $stmt->bind_param('s', $username);",
+      "recommendation": "Always use parameterized queries for WHERE clauses",
+      "remediationSteps": [
+        "Use prepared statements for WHERE clause conditions",
+        "Bind user input to parameterized placeholders",
+        "Never concatenate user input into WHERE conditions",
+        "Implement input validation (whitelist approach)"
+      ]
+    },
+    {
+      "id": "SQLI_008",
+      "name": "SQL Injection in ORDER BY",
+      "type": "SQLI",
+      "severity": "HIGH",
+      "confidence": 0.80,
+      "description": "ORDER BY clause accepts user input without validation",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "ORDER\\s+BY\\s+[^'\"]*\\$_(GET|POST|REQUEST|COOKIE)|ORDER\\s+BY\\s+[^'\"]*\\.\\s*\\$"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["ORDER BY"],
+      "sanitizers": ["intval", "in_array", "whitelist"],
+      "vulnerableExample": "$sort = $_GET['sort']; $query = \"SELECT * FROM users ORDER BY \" . $sort;",
+      "secureExample": "$allowed_columns = ['id', 'name', 'email']; $sort = in_array($_GET['sort'], $allowed_columns) ? $_GET['sort'] : 'id';",
+      "recommendation": "Use a whitelist of allowed columns for ORDER BY instead of user input directly",
+      "remediationSteps": [
+        "Create a whitelist of allowed column names",
+        "Validate that user input matches one of the allowed columns",
+        "Construct ORDER BY using the validated column name",
+        "Use prepared statements when user input must be used dynamically"
+      ]
+    },
+    {
+      "id": "SQLI_009",
+      "name": "SQL Injection in LIKE Clause",
+      "type": "SQLI",
+      "severity": "HIGH",
+      "confidence": 0.85,
+      "description": "LIKE clause with unsanitized user input allowing SQL injection",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "LIKE\\s+['\"].*%['\"]\\s*\\.\\s*\\$|LIKE\\s+['\"].*\\$.*['\"]|LIKE\\s+'%.*'\\s*\\.\\s*\\$_(GET|POST|REQUEST|COOKIE)"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["LIKE"],
+      "sanitizers": ["prepared statements", "mysqli_real_escape_string"],
+      "vulnerableExample": "$search = $_GET['q']; $query = \"SELECT * FROM products WHERE name LIKE '%\" . $search . \"%'\";",
+      "secureExample": "$search = $_GET['q']; $stmt = $conn->prepare('SELECT * FROM products WHERE name LIKE ?'); $stmt->bind_param('s', '%' . $search . '%');",
+      "recommendation": "Use prepared statements with LIKE queries to prevent LIKE-based SQL injection",
+      "remediationSteps": [
+        "Use prepared statements with LIKE placeholders",
+        "Properly escape special characters (%) with prepared statements",
+        "Always use bind_param or bindValue for LIKE searches",
+        "Consider using FULLTEXT search as alternative for large datasets"
+      ]
+    },
+    {
+      "id": "SQLI_010",
+      "name": "SQL Injection via UNION-Based",
+      "type": "SQLI",
+      "severity": "CRITICAL",
+      "confidence": 0.95,
+      "description": "UNION SELECT pattern detected indicating SQL injection attempt",
+      "cweid": "CWE-89",
+      "owaspid": "A1",
+      "pattern": {
+        "type": "regex",
+        "value": "UNION\\s+SELECT|union.*select.*from|\\|-or-|\\bor\\b.*1\\s*=\\s*1"
+      },
+      "sources": ["$_GET", "$_POST", "$_REQUEST", "$_COOKIE"],
+      "sinks": ["SELECT"],
+      "sanitizers": ["prepared statements", "input validation"],
+      "vulnerableExample": "User input: ' UNION SELECT username, password FROM admin--",
+      "secureExample": "Use prepared statements which prevent UNION-based attacks",
+      "recommendation": "Always use prepared statements which prevent UNION-based SQL injection",
+      "remediationSteps": [
+        "Use prepared statements exclusively",
+        "Validate input against expected format",
+        "Implement WAF rules to detect UNION-based payloads",
+        "Log and alert on suspicious query patterns"
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "lastUpdated": "2026-04-15",
+    "totalRules": 10,
+    "categories": ["SQL Injection"],
+    "description": "SQL Injection (SQLi) detection ruleset for SecureCLI vulnerability scanner"
+  }
+}

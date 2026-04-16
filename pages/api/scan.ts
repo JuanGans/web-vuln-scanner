@@ -3,7 +3,7 @@ import prisma from "@/lib/db";
 import path from "path";
 import fs from "fs";
 import { extractZip, cleanupFolder } from "@/lib/extract";
-import { runScannerWithFallback } from "@/lib/scanner";
+import { runSecureCLIScan } from "@/lib/scannerCLI";
 
 type ResponseData = {
   success?: boolean;
@@ -58,7 +58,7 @@ export default async function handler(
 
     // Run scanner pada folder yang sudah disiapkan
     console.log(`Running scanner on: ${scanDirPath}`);
-    const scanResult = await runScannerWithFallback(scanDirPath);
+    const scanResult = await runSecureCLIScan(scanDirPath);
 
     // Save result ke database
     const dbResult = await prisma.scanResult.create({
