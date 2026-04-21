@@ -180,6 +180,68 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       console.log(`[SCANNER-CLI] First vulnerability structure:`, JSON.stringify(vulnerabilitiesArray[0], null, 2));
     }
 
+    // Helper: Extract actual code from file
+    const extractCodeFromFile = (filePath: string, lineNumber: number, contextLines: number = 3): { code: string; codeContext?: { before: string[]; target: string; after: string[] }; extractionLog?: string } => {
+      try {
+        // Normalize file path - remove leading slashes and backslashes
+        const normalizedFilePath = filePath.replace(/^[\/\\]+/, "");
+        
+        // Try multiple path combinations
+        const pathCombinations = [
+          path.join(targetPath, normalizedFilePath),
+          path.join(targetPath, filePath),
+          filePath, // Try absolute path from scanner
+          path.join(process.cwd(), "uploads", "extracted", normalizedFilePath),
+        ];
+
+        let foundPath = null;
+        for (const tryPath of pathCombinations) {
+          console.log(`[SCANNER-CLI] Trying path: ${tryPath}`);
+          if (fs.existsSync(tryPath)) {
+            foundPath = tryPath;
+            console.log(`[SCANNER-CLI] ✓ File found at: ${foundPath}`);
+            break;
+          }
+        }
+
+        if (!foundPath) {
+          const errorMsg = `File not found. Tried: ${pathCombinations.join(" | ")}`;
+          console.warn(`[SCANNER-CLI] ${errorMsg}`);
+          return { code: "", extractionLog: errorMsg };
+        }
+
+        const content = fs.readFileSync(foundPath, "utf-8");
+        const lines = content.split("\n");
+        const targetIdx = Math.max(0, (lineNumber || 1) - 1);
+
+        if (targetIdx >= lines.length) {
+          return { 
+            code: lines[targetIdx] || "",
+            extractionLog: `Line ${lineNumber} is beyond file length (${lines.length} lines)`
+          };
+        }
+
+        const startIdx = Math.max(0, targetIdx - contextLines);
+        const endIdx = Math.min(lines.length, targetIdx + contextLines + 1);
+
+        console.log(`[SCANNER-CLI] Successfully extracted code at line ${lineNumber} from ${foundPath}`);
+
+        return {
+          code: lines[targetIdx] || "",
+          codeContext: {
+            before: lines.slice(startIdx, targetIdx).map(l => l || ""),
+            target: lines[targetIdx] || "",
+            after: lines.slice(targetIdx + 1, endIdx).map(l => l || ""),
+          },
+          extractionLog: `Extracted from: ${foundPath}`
+        };
+      } catch (error) {
+        const errorMsg = `Error extracting code: ${error instanceof Error ? error.message : String(error)}`;
+        console.warn(`[SCANNER-CLI] ${errorMsg}`);
+        return { code: "", extractionLog: errorMsg };
+      }
+    };
+
     // Convert SecureCLI format → web interface format
     const vulnerabilities = vulnerabilitiesArray.map((vuln: any) => {
       // Map type: SQLI_* → SQLInjection, XSS_* → XSS
@@ -195,32 +257,44 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       else if (vuln.severity === "MEDIUM") severity = "Sedang";
       else if (vuln.severity === "LOW") severity = "Rendah";
 
+      // Try to extract actual code from file
+      const extractedCodeData = extractCodeFromFile(vuln.file || "", vuln.line || 0);
+      
+      // Log extraction result
+      if (extractedCodeData.extractionLog) {
+        console.log(`[SCANNER-CLI] Extraction log for ${vuln.file}:${vuln.line} - ${extractedCodeData.extractionLog}`);
+      }
+      
+      const actualCode = 
+        vuln.originalCode?.trim() || 
+        vuln.code?.trim() || 
+        vuln.snippet?.trim() || 
+        vuln.sourceCode?.trim() || 
+        extractedCodeData.code ||
+        "";
+
+      console.log(`[SCANNER-CLI] Final code for ${vuln.file}:${vuln.line}: ${actualCode ? `✓ ${actualCode.substring(0, 50)}...` : "✗ EMPTY"}`);
+
       return {
         id: vuln.type.toLowerCase(),
         type,
         severity,
         file: vuln.file || "unknown",
         line: vuln.line || 0,
-        code: vuln.originalCode?.trim() || vuln.code?.trim() || vuln.snippet?.trim() || vuln.sourceCode?.trim() || "",
+        code: actualCode,
         description: vuln.explanation || vuln.vulnerability || "",
         remediation:
           vuln.remediation?.description || vuln.remediation?.recommendations?.[0] || "",
         riskScore: vuln.riskScore || 8,
         confidence: Math.round((vuln.confidence || 0.8) * 100),
         exploitability: vuln.exploitability || 8,
-        codeContext: vuln.codeContext
-          ? {
-              before: vuln.codeContext.before || [],
-              target: vuln.codeContext.code || vuln.codeContext.target || "",
-              after: vuln.codeContext.after || [],
-            }
-          : undefined,
+        codeContext: vuln.codeContext || extractedCodeData.codeContext,
         owasp: vuln.owasp?.category || "",
         cwe: vuln.owasp?.cwe || "CWE-1035",
         taintPath: ["Source", "→", "Sink"],
         codeExample: {
-          vulnerable: `// ❌ Vulnerable code - Direct from file\n${vuln.originalCode?.trim() || vuln.code?.trim() || vuln.snippet?.trim() || vuln.sourceCode?.trim() || "(Code not extracted)"}`,
-          safe: generateSafeCodeExample(type, vuln.originalCode?.trim() || vuln.code?.trim() || vuln.snippet?.trim() || vuln.sourceCode?.trim() || ""),
+          vulnerable: `// ❌ Vulnerable code - From file: ${vuln.file || "unknown"}:${vuln.line || "?"}\n${actualCode || "(Code could not be extracted)"}`,
+          safe: generateSafeCodeExample(type, actualCode || ""),
         },
       };
     });
