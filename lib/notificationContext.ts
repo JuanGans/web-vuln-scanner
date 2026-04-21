@@ -11,10 +11,14 @@ export interface Notification {
   read: boolean
 }
 
+type NotificationInput = Omit<Notification, "id" | "timestamp" | "read"> & {
+  autoDismissAfterMs?: number
+}
+
 interface NotificationContextType {
   notifications: Notification[]
   unreadCount: number
-  addNotification: (notification: Omit<Notification, "id" | "timestamp" | "read">) => void
+  addNotification: (notification: NotificationInput) => void
   markAsRead: (id: string) => void
   clearNotification: (id: string) => void
   clearAllNotifications: () => void
@@ -54,7 +58,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [notifications, isClient])
 
   const addNotification = useCallback(
-    (notification: Omit<Notification, "id" | "timestamp" | "read">) => {
+    (notification: NotificationInput) => {
       const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       const newNotification: Notification = {
         ...notification,
@@ -65,11 +69,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       setNotifications((prev) => [newNotification, ...prev].slice(0, 50))
 
-      // Auto-delete info notifications after 5 seconds (progress/status updates)
-      if (notification.type === "info") {
+      // Auto-delete informational notifications after a short delay.
+      // Success/error/warning notifications remain visible until the user clears them.
+      const autoDismissAfterMs =
+        notification.autoDismissAfterMs ?? (notification.type === "info" ? 5000 : undefined)
+
+      if (typeof autoDismissAfterMs === "number" && autoDismissAfterMs > 0) {
         setTimeout(() => {
           setNotifications((prev) => prev.filter((n) => n.id !== id))
-        }, 5000)
+        }, autoDismissAfterMs)
       }
     },
     []
