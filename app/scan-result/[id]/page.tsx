@@ -195,10 +195,17 @@ export default function ScanDetailPage() {
 
   const groupVulnerabilitiesByFile = (vulnerabilities: VulnerabilityItem[]): GroupedVulnerabilities[] => {
     const groups = new Map<string, GroupedVulnerabilities>()
+    const uploadedFileName = data?.fileName ? getFileName(data.fileName) : ""
+    const isSingleCodeFileUpload = /\.(php|js)$/i.test(uploadedFileName)
 
     vulnerabilities.forEach((vuln, index) => {
-      const fileKey = vuln.file || data?.fileName || "unknown-file"
-      const fileName = data?.fileName || getFileName(fileKey)
+      const vulnFileName = getFileName(vuln.file || "")
+      const fileKey = isSingleCodeFileUpload
+        ? uploadedFileName || "unknown-file"
+        : vulnFileName || uploadedFileName || "unknown-file"
+      const fileName = isSingleCodeFileUpload
+        ? uploadedFileName || vulnFileName || "unknown"
+        : vulnFileName || uploadedFileName || "unknown"
 
       if (!groups.has(fileKey)) {
         groups.set(fileKey, {
