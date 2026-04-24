@@ -3,7 +3,7 @@
 import { Navbar } from "@/components/navbar"
 import { RemediationCard } from "@/components/RemediationCard"
 import { TrendChart } from "@/components/TrendChart"
-import { ChevronRight, Copy, ArrowLeft } from "lucide-react"
+import { ChevronRight, ChevronDown, Copy, ArrowLeft } from "lucide-react"
 import { Manrope } from "next/font/google"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
@@ -79,6 +79,38 @@ interface ScanDetail {
   updatedAt: string
 }
 
+interface VulnerabilityItem {
+  id: string
+  type: "SQLInjection" | "XSS"
+  severity: "Kritis" | "Tinggi" | "Sedang" | "Rendah"
+  file: string
+  line: number
+  code: string
+  description: string
+  remediation: string
+  taintPath: string[]
+  codeExample: {
+    vulnerable: string
+    safe: string
+  }
+  riskScore?: number
+  confidence?: number
+  exploitability?: number
+  codeContext?: {
+    before: string[]
+    target: string
+    after: string[]
+  }
+  owasp?: string
+  cwe?: string
+}
+
+interface GroupedVulnerabilities {
+  fileKey: string
+  fileName: string
+  vulnerabilities: Array<VulnerabilityItem & { originalIndex: number }>
+}
+
 export default function ScanDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -88,6 +120,7 @@ export default function ScanDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [openFileGroups, setOpenFileGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const fetchScanDetail = async () => {
@@ -154,6 +187,41 @@ export default function ScanDetailPage() {
     const scansCount = projectScans.length
     const scanIndex = projectScans.findIndex((s) => s.id === scan.id)
     return scansCount - scanIndex // Reverse order for descending display
+  }
+
+  const getFileName = (filePath: string) => {
+    return filePath.split("\\").pop() || filePath.split("/").pop() || filePath
+  }
+
+  const groupVulnerabilitiesByFile = (vulnerabilities: VulnerabilityItem[]): GroupedVulnerabilities[] => {
+    const groups = new Map<string, GroupedVulnerabilities>()
+
+    vulnerabilities.forEach((vuln, index) => {
+      const fileKey = vuln.file || data?.fileName || "unknown-file"
+      const fileName = data?.fileName || getFileName(fileKey)
+
+      if (!groups.has(fileKey)) {
+        groups.set(fileKey, {
+          fileKey,
+          fileName,
+          vulnerabilities: [],
+        })
+      }
+
+      groups.get(fileKey)!.vulnerabilities.push({
+        ...vuln,
+        originalIndex: index,
+      })
+    })
+
+    return Array.from(groups.values())
+  }
+
+  const toggleFileGroup = (fileKey: string) => {
+    setOpenFileGroups((prev) => ({
+      ...prev,
+      [fileKey]: !prev[fileKey],
+    }))
   }
 
   if (isLoading) {
@@ -264,41 +332,84 @@ export default function ScanDetailPage() {
           <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
             <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6`}>Vulnerabilities Found</h2>
             {data.result?.vulnerabilities && data.result.vulnerabilities.length > 0 ? (
-              <div className="space-y-3">
-                {data.result.vulnerabilities.map((vuln, idx: number) => {
-                  const fileName = vuln.file.split("\\").pop() || vuln.file.split("/").pop() || "unknown"
-                  const severityColor = getSeverityColor(vuln.severity)
+              <div className="space-y-4">
+                {groupVulnerabilitiesByFile(data.result.vulnerabilities as VulnerabilityItem[]).map((group) => {
+                  const isOpen = !!openFileGroups[group.fileKey]
+                  const highestRiskScore = group.vulnerabilities.reduce((max, vuln) => {
+                    const score = vuln.riskScore || 0
+                    return score > max ? score : max
+                  }, 0)
+
                   return (
-                    <a
-                      key={idx}
-                      href={`/scan-result/${id}/vulnerability/${idx}`}
-                      className="flex items-center justify-between p-4 bg-surface-container-low rounded-lg border border-outline-variant/10 hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group"
-                    >
-                      <div className="flex-grow min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className={`${severityColor.badge} px-3 py-1 rounded text-xs font-bold`}>
-                            {vuln.severity}
-                          </span>
-                          <span className="text-on-surface font-semibold group-hover:text-primary transition-colors">
-                            {vuln.type === "XSS" ? "Cross-Site Scripting (XSS)" : "SQL Injection"} #{idx + 1}
-                          </span>
+                    <div key={group.fileKey} className="rounded-lg border border-outline-variant/10 bg-surface-container-low">
+                      <button
+                        type="button"
+                        onClick={() => toggleFileGroup(group.fileKey)}
+                        className="flex w-full items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-primary/5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="rounded bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                              {group.vulnerabilities.length} Vulnerabilities
+                            </span>
+                            <span className="font-semibold text-on-surface">{group.fileName}</span>
+                          </div>
+                          <p className="text-sm text-on-surface-variant">
+                            Klik untuk melihat daftar vulnerability di file ini.
+                          </p>
                         </div>
-                        <p className="text-on-surface-variant text-sm truncate">
-                          <span className="font-mono">{fileName}</span>
-                          <span className="opacity-50"> at Line {vuln.line}</span>
-                        </p>
-                        <p className="text-on-surface-variant text-xs mt-1 truncate">
-                          {vuln.code.substring(0, 80)}...
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 ml-4 shrink-0">
-                        <div className="text-right">
-                          <p className="text-on-surface font-bold text-lg">{vuln.riskScore || "N/A"}/10</p>
-                          <p className="text-on-surface-variant text-xs">Risk Score</p>
+
+                        <div className="flex items-center gap-4 shrink-0">
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-on-surface">{highestRiskScore || "N/A"}/10</p>
+                            <p className="text-xs text-on-surface-variant">Highest Risk</p>
+                          </div>
+                          <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform ${isOpen ? "rotate-180" : ""}`} />
                         </div>
-                        <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
-                      </div>
-                    </a>
+                      </button>
+
+                      {isOpen && (
+                        <div className="border-t border-outline-variant/10 p-4 space-y-3">
+                          {group.vulnerabilities.map((vuln) => {
+                            const severityColor = getSeverityColor(vuln.severity)
+                            const displayIndex = vuln.originalIndex
+
+                            return (
+                              <a
+                                key={vuln.id}
+                                href={`/scan-result/${id}/vulnerability/${displayIndex}`}
+                                className="flex items-center justify-between p-4 bg-surface-container rounded-lg border border-outline-variant/10 hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group"
+                              >
+                                <div className="flex-grow min-w-0">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className={`${severityColor.badge} px-3 py-1 rounded text-xs font-bold`}>
+                                      {vuln.severity}
+                                    </span>
+                                    <span className="text-on-surface font-semibold group-hover:text-primary transition-colors">
+                                      {vuln.type === "XSS" ? "Cross-Site Scripting (XSS)" : "SQL Injection"} #{displayIndex + 1}
+                                    </span>
+                                  </div>
+                                  <p className="text-on-surface-variant text-sm truncate">
+                                    <span className="font-mono">{group.fileName}</span>
+                                    <span className="opacity-50"> at Line {vuln.line}</span>
+                                  </p>
+                                  <p className="text-on-surface-variant text-xs mt-1 truncate">
+                                    {vuln.code.substring(0, 80)}...
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3 ml-4 shrink-0">
+                                  <div className="text-right">
+                                    <p className="text-on-surface font-bold text-lg">{vuln.riskScore || "N/A"}/10</p>
+                                    <p className="text-on-surface-variant text-xs">Risk Score</p>
+                                  </div>
+                                  <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+                                </div>
+                              </a>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
