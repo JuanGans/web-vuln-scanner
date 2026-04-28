@@ -4,6 +4,7 @@ import { Inter, Manrope } from "next/font/google"
 import { Navbar } from "@/components/navbar"
 import { Bolt, Check, ChevronDown, CircleCheck, FolderOpen, Search, Upload, AlertCircle } from "lucide-react"
 import { useRef, useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useNotification } from "@/lib/notificationContext"
@@ -38,6 +39,25 @@ export default function UploadPage() {
   useEffect(() => {
     fetchProjects()
   }, [])
+
+  // Prefill projectId and fileName when navigated from a rescan action
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    try {
+      const projectId = searchParams?.get("projectId")
+      const fileName = searchParams?.get("fileName")
+      if (projectId) {
+        setSelectedProject(projectId)
+      }
+      if (fileName) {
+        // show a friendly note to user via error state as non-fatal info
+        setError(null)
+      }
+    } catch (e) {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const fetchProjects = async () => {
     try {
@@ -358,6 +378,16 @@ export default function UploadPage() {
                     <p className="font-semibold text-[#2a3439]">{file.name}</p>
                     <p className="text-sm text-[#566166]">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Rescan hint when navigated from history/detail */}
+            {searchParams?.get("fileName") && (
+              <div className="mb-6 rounded-lg bg-yellow-50 p-4 border border-yellow-200">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold">Rescan Mode</span>
+                  <span className="text-sm text-on-surface-variant">Preparing to rescan: {searchParams.get("fileName")}</span>
                 </div>
               </div>
             )}

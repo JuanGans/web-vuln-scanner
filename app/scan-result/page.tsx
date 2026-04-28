@@ -407,6 +407,15 @@ export default function ScanResultPage() {
                               View Detail
                               <ArrowRight className="w-4 h-4" />
                             </Link>
+                            <Link
+                              href={`/upload?projectId=${scan.projectId || ""}&fileName=${encodeURIComponent(
+                                scan.fileName || ""
+                              )}`}
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm bg-white border border-outline-variant/20 hover:bg-surface-container-low transition-all text-on-surface"
+                              title={`Rescan ${scan.fileName || scan.id}`}
+                            >
+                              Rescan
+                            </Link>
                             <button
                               type="button"
                               onClick={() => setScanToDelete(scan)}
