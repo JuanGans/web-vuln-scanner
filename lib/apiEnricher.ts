@@ -143,9 +143,23 @@ function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: Severi
   const key = `${prefix}_${severity}`
   let ruleId = ruleMap[key] || `${prefix}_001`
   
-  // Fine-tune based on description/code patterns
-  if (vulnType === "XSS" && description.includes("Stored")) {
-    ruleId = "XSS_003"  // Stored XSS
+  // For XSS: Detect if Stored XSS (from database) vs Reflected XSS (from query)
+  if (vulnType === "XSS") {
+    // Check if description or code mentions database sources
+    const isStoredXSS = 
+      description.includes("Stored") || 
+      description.includes("database") || 
+      code.includes("$row[") ||
+      code.includes("->") ||
+      code.includes("mysqli_fetch") ||
+      code.includes("pg_fetch") ||
+      code.includes("->fetch");
+    
+    if (isStoredXSS) {
+      ruleId = "XSS_003";  // Stored XSS (from database)
+    } else {
+      ruleId = "XSS_002";  // Reflected XSS (from query params)
+    }
   }
   
   return ruleId

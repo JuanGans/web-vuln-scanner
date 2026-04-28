@@ -21,61 +21,130 @@ function getCWEForVulnerabilityType(type: "SQLInjection" | "XSS"): string {
 
 /**
  * Extract variables dari code untuk build taintPath yang detail
+ * Format: Source → Intermediate Variables → Sink (properly ordered)
  */
-function generateDetailedTaintPath(code: string, type: "SQLInjection" | "XSS"): string[] {
+function generateDetailedTaintPath(code: string, type: "SQLInjection" | "XSS", contextBefore: string[] = [], contextAfter: string[] = []): string[] {
   const path: string[] = [];
   
-  if (type === "SQLInjection") {
-    // Extract user input sources: $_GET, $_POST, $_SESSION, $_SERVER, $_COOKIE, $_REQUEST
-    if (code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/)) {
-      const match = code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\['?([^'"\]\[]*)['"]?\]/);
-      if (match) {
-        path.push(`$_${match[1]}['${match[2]}']`);
-      }
-    }
-    
-    // Extract variable assignments
-    const varMatches = code.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/g);
-    if (varMatches) {
-      const uniqueVars = [...new Set(varMatches)];
-      path.push("→", ...uniqueVars.slice(0, 3)); // Limit to first 3 unique vars
-    }
-    
-    // Extract sink functions
-    if (code.match(/mysqli_query|mysql_query|->query|prepare|exec/i)) {
-      const sinkMatch = code.match(/(mysqli_query|mysql_query|->query|prepare|exec)/i);
-      if (sinkMatch) {
-        path.push("→", `${sinkMatch[1]}()`);
-      }
-    }
-  } else if (type === "XSS") {
-    // Extract user input sources
-    if (code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/)) {
-      const match = code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\['?([^'"\]\[]*)['"]?\]/);
-      if (match) {
-        path.push(`$_${match[1]}['${match[2]}']`);
-      }
-    }
-    
-    // Extract variables
-    const varMatches = code.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/g);
-    if (varMatches) {
-      const uniqueVars = [...new Set(varMatches)];
-      path.push("→", ...uniqueVars.slice(0, 2));
-    }
-    
-    // Extract output sinks: echo, print, innerHTML, etc
-    if (code.match(/echo|print|innerHTML|appendChild|textContent|innerHTML/i)) {
-      const sinkMatch = code.match(/(echo|print|innerHTML|appendChild|textContent)/i);
-      if (sinkMatch) {
-        path.push("→", sinkMatch[1]);
-      }
+  // Step 1: Extract SOURCE (user input) - from code or contextBefore
+  let source: string | null = null;
+  
+  // First try: direct source in current code line
+  const sourceMatch = code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER|SESSION)\['?([^'"\]\[]*)['"]?\]/);
+  if (sourceMatch) {
+    source = `$_${sourceMatch[1]}['${sourceMatch[2]}']`;
+  }
+  
+  // Second try: look for source in contextBefore (for better tracing)
+  if (!source && contextBefore && contextBefore.length > 0) {
+    const contextStr = contextBefore.join(" ");
+    const contextSourceMatch = contextStr.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER|SESSION)\['?([^'"\]\[]*)['"]?\]/);
+    if (contextSourceMatch) {
+      source = `$_${contextSourceMatch[1]}['${contextSourceMatch[2]}']`;
     }
   }
   
-  // If path is empty or only has one item, return default
-  if (path.length <= 1) {
-    return ["Source", "→", "Sink"];
+  // If source found, add to path
+  if (source) {
+    path.push(source);
+  }
+  
+  if (type === "SQLInjection") {
+    // Step 2: Extract INTERMEDIATE VARIABLES (but exclude system variables like $GLOBALS)
+    const keyQueryVar = extractSqlSinkArgumentVariable(code);
+    const assignedVar = extractAssignedPhpVariable(code);
+    
+    // Build flow: source → intermediate variables → sink
+    const intermediateVars: string[] = [];
+    // Determine if current line is a sink (so assignedVar is likely an output/result variable)
+    const isSinkInLine = /(mysqli_query|mysql_query|->query|prepare|exec)\s*\(/i.test(code);
+    
+    // Check if query contains embedded variables like '$id'
+    const embeddedVarMatch = code.match(/'\$([a-zA-Z_][a-zA-Z0-9_]*)/g) || 
+                             code.match(/"\$([a-zA-Z_][a-zA-Z0-9_]*)/g);
+    if (embeddedVarMatch) {
+      for (const match of embeddedVarMatch) {
+        const varName = `$${match.match(/\$([a-zA-Z_][a-zA-Z0-9_]*)/)?.[1]}`;
+        if (!intermediateVars.includes(varName) && varName !== source) {
+          intermediateVars.push(varName);
+        }
+      }
+    }
+    
+    // Add query variable first (direct input to sink)
+    if (keyQueryVar && !intermediateVars.includes(keyQueryVar)) {
+      intermediateVars.push(keyQueryVar);
+    }
+    // Add assigned var only if this line is not the sink (to avoid reporting result variable as source)
+    if (assignedVar && !intermediateVars.includes(assignedVar) && !isSinkInLine) {
+      intermediateVars.push(assignedVar);
+    }
+    
+    // Add intermediate vars to path (but not $GLOBALS or PHP internals)
+    if (intermediateVars.length > 0) {
+      if (source) path.push("→");
+      for (const variable of intermediateVars) {
+        if (!variable.includes("GLOBALS") && !variable.startsWith("___")) {
+          path.push(variable);
+          path.push("→");
+        }
+      }
+    }
+    
+    // Step 3: Extract SINK (destination function)
+    // Check current line first, then contextAfter for nearby sink calls
+    const sinkMatch = code.match(/(mysqli_query|mysql_query|->query|prepare|exec)\s*\(/i) ||
+      (contextAfter && contextAfter.join(" ").match(/(mysqli_query|mysql_query|->query|prepare|exec)\s*\(/i));
+    if (sinkMatch) {
+      path.push(`${sinkMatch[1]}()`);
+    }
+  } else if (type === "XSS") {
+    // For XSS: try to detect if database source
+    // Fixed regex to properly match $row['name'] or $row["name"]
+    const dbVars = contextBefore?.join(" ").match(/\$row\[[^\]]*\]/g) || [];
+    const hasDbSource = dbVars.length > 0;
+    
+    // If database source detected and no direct input source, mark as database
+    if (hasDbSource && !source) {
+      source = "$row[...database]";
+      path.push(source);
+    }
+    
+    // Step 2: Extract INTERMEDIATE VARIABLES (HTML/echo variables)
+    const htmlVar = extractPhpVariableName(code);
+    const intermediateVars: string[] = [];
+    if (htmlVar && !intermediateVars.includes(htmlVar)) intermediateVars.push(htmlVar);
+    
+    // Add intermediate vars to path
+    if (intermediateVars.length > 0) {
+      if (source) path.push("→");
+      for (const variable of intermediateVars) {
+        path.push(variable);
+        path.push("→");
+      }
+    }
+    
+    // Step 3: Extract SINK (output function)
+    const sinkMatch = code.match(/(echo|print|innerHTML|appendChild|\.html\(|display)/i) ||
+      (contextAfter && contextAfter.join(" ").match(/(echo|print|innerHTML|appendChild|\.html\(|display)/i));
+    if (sinkMatch) {
+      path.push(sinkMatch[1]);
+    }
+  }
+  
+  // Clean up trailing arrows
+  while (path.length > 0 && path[path.length - 1] === "→") {
+    path.pop();
+  }
+  
+  // If path still empty, return default
+  if (path.length === 0) {
+    return ["$_INPUT", "→", "Sink"];
+  }
+
+  // If we only found a source with no sink, append a generic sink to make path informative
+  if (path.length === 1) {
+    return [path[0], "→", "Sink"];
   }
   
   return path;
@@ -84,7 +153,7 @@ function generateDetailedTaintPath(code: string, type: "SQLInjection" | "XSS"): 
 /**
  * Generate detailed description untuk vulnerability
  */
-function generateDetailedDescription(type: "SQLInjection" | "XSS", code: string, severity: string): string {
+function generateDetailedDescription(type: "SQLInjection" | "XSS", code: string, severity: string, contextBefore: string[] = []): string {
   if (type === "SQLInjection") {
     const hasDirectInput = /\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/.test(code);
     const hasQueryConcat = /=\s*"[^"]*"\s*\+|=\s*'[^']*'\s*\+|\.\s*\$/.test(code);
@@ -98,14 +167,21 @@ function generateDetailedDescription(type: "SQLInjection" | "XSS", code: string,
     
     return "Database query menggunakan variabel yang mungkin berasal dari input pengguna tanpa proper prepared statement atau parameterized query.";
   } else if (type === "XSS") {
-    const hasDbVariable = /\$row\[|->|fetch|result\[/.test(code);
+    // Check context to detect Stored XSS (from database)
+    const contextStr = (contextBefore || []).join(" ");
+    // Fixed regex patterns for database detection
+    const hasDbVariable = /\$row\[|->fetch\(|mysqli_fetch|pg_fetch|->query|->all|->get/.test(code) || 
+                         /\$row\[|->fetch\(|mysqli_fetch|pg_fetch|->query|->all|->get/.test(contextStr);
     const hasDirectOutput = /echo|print|innerHTML/.test(code);
     
     if (hasDirectOutput) {
       if (hasDbVariable) {
         return "Data dari database ditampilkan langsung ke HTML tanpa encoding/escaping. Jika data tersebut pernah disimpan dari user input, ini adalah Stored XSS vulnerability.";
       }
-      return "Input pengguna ditampilkan langsung ke HTML tanpa encoding/escaping, memungkinkan attacker untuk inject script berbahaya (Reflected XSS).";
+      const hasDirectInput = /\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/.test(code) || /\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/.test(contextStr);
+      if (hasDirectInput) {
+        return "Input pengguna ditampilkan langsung ke HTML tanpa encoding/escaping, memungkinkan attacker untuk inject script berbahaya (Reflected XSS).";
+      }
     }
     
     return "Konten yang mungkin mengandung user input ditampilkan tanpa proper encoding/sanitasi, menciptakan potensi XSS attack.";
@@ -166,28 +242,34 @@ function detectXSSType(code: string): "Stored XSS" | "Reflected XSS" {
 }
 
 /**
- * Determine primary line untuk SQLi (source line jika ada assignment, else sink line)
+ * Determine primary line untuk SQLi
+ * 
+ * Decision Logic:
+ * - If line is SINK (mysqli_query, mysql_query, etc) → PRIMARY LINE = this line
+ *   Rationale: This is where vulnerability is actually exploited/executed
+ * 
+ * - If line is ASSIGNMENT only (no sink) → PRIMARY LINE = this line  
+ *   Rationale: Report the query construction when sink is not nearby
+ * 
+ * - If both assignment and sink nearby → PRIMARY LINE = sink
+ *   Rationale: Report execution point as it's more critical
  */
-function determinePrimaryLineForSQLi(code: string, contextBefore: string[], line: number): { primaryLine: number; sourceLine: number | null; sinkLine: number } {
+function determinePrimaryLineForSQLi(code: string, contextBefore: string[], line: number): { primaryLine: number; sourceLine: number | null; sinkLine: number | null } {
   const isAssignment = /^\s*\$[a-zA-Z_][a-zA-Z0-9_]*\s*=/.test(code) && /select|insert|update|delete/i.test(code);
   const isSink = /mysqli_query|mysql_query|->query|prepare|exec/i.test(code);
   
-  if (isAssignment) {
-    // This is query assignment - report as primary line
-    return { primaryLine: line, sourceLine: line, sinkLine: null as any };
-  } else if (isSink) {
-    // This is sink execution - check if query assignment is nearby (in context)
-    const contextCode = contextBefore.map(l => l.trim()).join(" ");
-    const hasNearbyAssignment = /\$[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*"[^"]*select/i.test(contextCode);
-    
-    if (hasNearbyAssignment) {
-      // Query assignment is before this sink - sourceLine is contextBefore line
-      const assignmentLine = line - contextBefore.length;
-      return { primaryLine: line, sourceLine: assignmentLine, sinkLine: line };
-    }
+  // Prefer SINK - it's the execution point where vulnerability matters
+  if (isSink) {
+    return { primaryLine: line, sourceLine: null, sinkLine: line };
   }
   
-  return { primaryLine: line, sourceLine: null, sinkLine: line };
+  // Fall back to ASSIGNMENT if no sink on this line
+  if (isAssignment) {
+    return { primaryLine: line, sourceLine: line, sinkLine: null };
+  }
+  
+  // Default: unknown line type, report as-is
+  return { primaryLine: line, sourceLine: null, sinkLine: null };
 }
 
 export interface ScanResult {
@@ -588,9 +670,12 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       console.log(`[SCANNER-CLI] Final code for ${vuln.file}:${vuln.line}: ${actualCode ? `✓ ${actualCode.substring(0, 50)}...` : "✗ EMPTY"}`);
 
       // Generate quality-enhanced vulnerability data
-      const detailedDescription = generateDetailedDescription(type, actualCode, severity);
+      // Use contextBefore from scanner result first (vuln.codeContext), then fallback to extraction
+      const contextBefore = vuln.codeContext?.before || extractedCodeData.codeContext?.before || [];
+      const contextAfter = vuln.codeContext?.after || extractedCodeData.codeContext?.after || [];
+      const detailedDescription = generateDetailedDescription(type, actualCode, severity, contextBefore);
       const remediationText = generateRemediationText(type, actualCode, severity);
-      const detailedTaintPath = generateDetailedTaintPath(actualCode, type);
+      const detailedTaintPath = generateDetailedTaintPath(actualCode, type, contextBefore, contextAfter);
       const cwe = getCWEForVulnerabilityType(type);
       
       // XSS-specific: detect Stored vs Reflected
@@ -602,7 +687,6 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       // SQLi-specific: determine primary line (source vs sink)
       let primaryLine = vuln.line || 0;
       if (type === "SQLInjection") {
-        const contextBefore = extractedCodeData.codeContext?.before || [];
         const lineInfo = determinePrimaryLineForSQLi(actualCode, contextBefore, vuln.line || 0);
         primaryLine = lineInfo.primaryLine;
         console.log(`[SCANNER-CLI] SQLi line mapping - Primary: ${lineInfo.primaryLine}, Source: ${lineInfo.sourceLine}, Sink: ${lineInfo.sinkLine}`);

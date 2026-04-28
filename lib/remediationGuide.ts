@@ -244,6 +244,64 @@ echo "<h1>Search results for: " . htmlspecialchars($search, ENT_QUOTES) . "</h1>
     ]
   },
 
+  XSS_003: {
+    ruleName: "Stored XSS from Database Output",
+    severity: "CRITICAL",
+    riskDescription: "Data dari database ditampilkan langsung ke halaman HTML tanpa encoding, padahal data tersebut mungkin sudah terkontaminasi dari input pengguna sebelumnya.",
+    whyItsDangerous: `
+    Stored XSS lebih berbahaya dari Reflected karena:
+    - Data berbahaya tersimpan di database
+    - Setiap pengguna yang membaca data akan ter-hack
+    - Tidak perlu social engineering - cukup akses normal
+    - Contoh: Komentar dengan <img src=x onerror=alert('xss')> di database
+    `,
+    stepByStepFix: [
+      "1. AUDIT DATABASE: Periksa apakah ada record yang sudah terinfeksi",
+      "2. SANITASI SAAT SIMPAN: Jangan simpan HTML/script dari user - simpan plain text",
+      "3. ESCAPE SAAT TAMPIL: Gunakan htmlspecialchars() saat menampilkan dari database",
+      "4. VALIDASI INPUT: Reject atau clean input sebelum disimpan (jika ingin HTML, gunakan HTML Purifier)",
+      "5. CLEANUP: Jalankan script untuk clean database dari XSS payload yang ada"
+    ],
+    beforeCode: `<?php
+$user_id = $_GET['id'];
+$query = "SELECT name, comment FROM users WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
+
+// ❌ Vulnerable: Directly echo from database
+echo "<p>Name: " . $row['name'] . "</p>";
+echo "<p>Comment: " . $row['comment'] . "</p>";  // Jika comment ada <script>, akan dijalankan!
+?>`,
+    afterCode: `<?php
+$user_id = $_GET['id'];
+$query = "SELECT name, comment FROM users WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
+
+// ✅ Safe: Escape saat tampilkan
+echo "<p>Name: " . htmlspecialchars($row['name'], ENT_QUOTES, 'UTF-8') . "</p>";
+echo "<p>Comment: " . htmlspecialchars($row['comment'], ENT_QUOTES, 'UTF-8') . "</p>";
+?>`,
+    bestPractices: [
+      "Escape SEMUA data dari database saat ditampilkan ke HTML",
+      "Jangan pernah trust data dari database - anggap semua untrusted sampai divalidasi",
+      "Gunakan prepared statements untuk query (sudah ada di contoh)",
+      "Implementasikan Content Security Policy (CSP) header yang ketat",
+      "Audit database secara berkala untuk payload berbahaya"
+    ],
+    additionalResources: [
+      "📚 OWASP: Stored XSS Prevention",
+      "🔍 Database Audit Techniques",
+      "🛡️ HTML Purifier Library (jika ingin accept HTML dari user)"
+    ]
+  },
+
   XSS_004: {
     ruleName: "JavaScript innerHTML with User Input",
     severity: "CRITICAL",
