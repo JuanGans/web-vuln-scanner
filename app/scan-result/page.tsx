@@ -15,9 +15,12 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle,
+  Trash2,
+  X,
 } from "lucide-react"
 import { Manrope } from "next/font/google"
 import { useEffect, useState } from "react"
+import { useNotification } from "@/lib/notificationContext"
 
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "700", "800"] })
 
@@ -41,7 +44,10 @@ export default function ScanResultPage() {
   const [scans, setScans] = useState<DBScanResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const [scanToDelete, setScanToDelete] = useState<DBScanResult | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const itemsPerPage = 10
+  const { addNotification } = useNotification()
 
   useEffect(() => {
     const fetchScans = async () => {
@@ -209,6 +215,44 @@ export default function ScanResultPage() {
     return "bg-primary/5 text-primary group-hover:bg-primary group-hover:text-white"
   }
 
+  const handleDeleteScan = async () => {
+    if (!scanToDelete || isDeleting) return
+
+    try {
+      setIsDeleting(true)
+      const res = await fetch(`/api/history?id=${scanToDelete.id}`, {
+        method: "DELETE",
+      })
+
+      const payload = await res.json()
+      if (!res.ok) {
+        throw new Error(payload?.error || "Gagal menghapus scan")
+      }
+
+      setScans((prev) => {
+        const next = prev.filter((scan) => scan.id !== scanToDelete.id)
+        const nextTotalPages = Math.max(1, Math.ceil(next.length / itemsPerPage))
+        setCurrentPage((page) => Math.min(page, nextTotalPages))
+        return next
+      })
+
+      addNotification({
+        type: "success",
+        title: "Scan Deleted",
+        message: `Riwayat scan ${scanToDelete.fileName || "tanpa nama"} berhasil dihapus.`,
+      })
+      setScanToDelete(null)
+    } catch (error) {
+      addNotification({
+        type: "error",
+        title: "Delete Failed",
+        message: error instanceof Error ? error.message : "Terjadi kesalahan saat menghapus scan.",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const totalPages = Math.ceil(scans.length / itemsPerPage)
   const startIdx = (currentPage - 1) * itemsPerPage
   const displayedScans = scans.slice(startIdx, startIdx + itemsPerPage)
@@ -355,13 +399,24 @@ export default function ScanResultPage() {
                           <div className="flex flex-wrap gap-2">{renderVulnerabilityBadges(vulnStats)}</div>
                         </td>
                         <td className="px-8 py-5 text-right">
-                          <Link
-                            href={`/scan-result/${scan.id}`}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-primary font-bold text-xs hover:bg-primary/5 transition-all border border-transparent hover:border-primary/10"
-                          >
-                            View Detail
-                            <ArrowRight className="w-4 h-4" />
-                          </Link>
+                          <div className="inline-flex items-center gap-2">
+                            <Link
+                              href={`/scan-result/${scan.id}`}
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-primary font-bold text-xs hover:bg-primary/5 transition-all border border-transparent hover:border-primary/10"
+                            >
+                              View Detail
+                              <ArrowRight className="w-4 h-4" />
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => setScanToDelete(scan)}
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-red-600 font-bold text-xs hover:bg-red-50 transition-all border border-transparent hover:border-red-100"
+                              aria-label={`Delete scan ${scan.fileName || scan.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -412,6 +467,53 @@ export default function ScanResultPage() {
           )}
         </section>
       </main>
+
+      {scanToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-lg border border-outline-variant/20 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h3 className={`${manrope.className} text-xl font-extrabold text-on-surface`}>Delete Scan?</h3>
+                <p className="mt-2 text-sm text-on-surface-variant">
+                  Data riwayat scan ini akan dihapus permanen dari database.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDeleting && setScanToDelete(null)}
+                className="rounded-full p-1 text-on-surface-variant hover:bg-surface-container-low"
+                aria-label="Close dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-6 rounded-md border border-outline-variant/20 bg-surface-container-low p-3 text-sm">
+              <p className="font-semibold text-on-surface">{scanToDelete.project?.name || "Unassigned Scan"}</p>
+              <p className="mt-1 text-on-surface-variant">{scanToDelete.fileName || "No file name"}</p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setScanToDelete(null)}
+                disabled={isDeleting}
+                className="rounded-full border border-outline-variant/30 px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteScan}
+                disabled={isDeleting}
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
