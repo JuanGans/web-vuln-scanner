@@ -42,20 +42,39 @@ export default function UploadPage() {
 
   // Prefill projectId and fileName when navigated from a rescan action
   const searchParams = useSearchParams()
+  const [rescanMode, setRescanMode] = useState(false)
+  const [rescanFileName, setRescanFileName] = useState<string | null>(null)
+
   useEffect(() => {
-    try {
-      const projectId = searchParams?.get("projectId")
-      const fileName = searchParams?.get("fileName")
-      if (projectId) {
-        setSelectedProject(projectId)
+    const fetchRescanData = async () => {
+      try {
+        const scanId = searchParams?.get("scanId")
+        if (!scanId) return
+
+        // Fetch scan data from API
+        const res = await fetch(`/api/history`)
+        if (!res.ok) throw new Error("Failed to fetch scan data")
+        
+        const data = await res.json()
+        const scan = data.data?.find((s: any) => s.id === scanId)
+        
+        if (scan) {
+          // Pre-fill project if exists
+          if (scan.projectId) {
+            setSelectedProject(scan.projectId)
+          }
+          // Store fileName for display hint
+          if (scan.fileName) {
+            setRescanFileName(scan.fileName)
+          }
+          setRescanMode(true)
+        }
+      } catch (e) {
+        console.error("Failed to load rescan data:", e)
       }
-      if (fileName) {
-        // show a friendly note to user via error state as non-fatal info
-        setError(null)
-      }
-    } catch (e) {
-      // ignore
     }
+
+    fetchRescanData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
@@ -383,11 +402,11 @@ export default function UploadPage() {
             )}
 
             {/* Rescan hint when navigated from history/detail */}
-            {searchParams?.get("fileName") && (
+            {rescanMode && rescanFileName && (
               <div className="mb-6 rounded-lg bg-yellow-50 p-4 border border-yellow-200">
                 <div className="flex items-center gap-3">
                   <span className="font-bold">Rescan Mode</span>
-                  <span className="text-sm text-on-surface-variant">Preparing to rescan: {searchParams.get("fileName")}</span>
+                  <span className="text-sm text-on-surface-variant">Preparing to rescan: {rescanFileName}</span>
                 </div>
               </div>
             )}
