@@ -8,6 +8,188 @@ import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 
+/**
+ * Map CWE berdasarkan vulnerability type
+ */
+function getCWEForVulnerabilityType(type: "SQLInjection" | "XSS"): string {
+  const cweMap = {
+    "SQLInjection": "CWE-89",  // Improper Neutralization of Special Elements used in an SQL Command
+    "XSS": "CWE-79",           // Improper Neutralization of Input During Web Page Generation
+  };
+  return cweMap[type] || "CWE-1035";
+}
+
+/**
+ * Extract variables dari code untuk build taintPath yang detail
+ */
+function generateDetailedTaintPath(code: string, type: "SQLInjection" | "XSS"): string[] {
+  const path: string[] = [];
+  
+  if (type === "SQLInjection") {
+    // Extract user input sources: $_GET, $_POST, $_SESSION, $_SERVER, $_COOKIE, $_REQUEST
+    if (code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/)) {
+      const match = code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\['?([^'"\]\[]*)['"]?\]/);
+      if (match) {
+        path.push(`$_${match[1]}['${match[2]}']`);
+      }
+    }
+    
+    // Extract variable assignments
+    const varMatches = code.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/g);
+    if (varMatches) {
+      const uniqueVars = [...new Set(varMatches)];
+      path.push("→", ...uniqueVars.slice(0, 3)); // Limit to first 3 unique vars
+    }
+    
+    // Extract sink functions
+    if (code.match(/mysqli_query|mysql_query|->query|prepare|exec/i)) {
+      const sinkMatch = code.match(/(mysqli_query|mysql_query|->query|prepare|exec)/i);
+      if (sinkMatch) {
+        path.push("→", `${sinkMatch[1]}()`);
+      }
+    }
+  } else if (type === "XSS") {
+    // Extract user input sources
+    if (code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/)) {
+      const match = code.match(/\$_(GET|POST|REQUEST|COOKIE|SERVER)\['?([^'"\]\[]*)['"]?\]/);
+      if (match) {
+        path.push(`$_${match[1]}['${match[2]}']`);
+      }
+    }
+    
+    // Extract variables
+    const varMatches = code.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/g);
+    if (varMatches) {
+      const uniqueVars = [...new Set(varMatches)];
+      path.push("→", ...uniqueVars.slice(0, 2));
+    }
+    
+    // Extract output sinks: echo, print, innerHTML, etc
+    if (code.match(/echo|print|innerHTML|appendChild|textContent|innerHTML/i)) {
+      const sinkMatch = code.match(/(echo|print|innerHTML|appendChild|textContent)/i);
+      if (sinkMatch) {
+        path.push("→", sinkMatch[1]);
+      }
+    }
+  }
+  
+  // If path is empty or only has one item, return default
+  if (path.length <= 1) {
+    return ["Source", "→", "Sink"];
+  }
+  
+  return path;
+}
+
+/**
+ * Generate detailed description untuk vulnerability
+ */
+function generateDetailedDescription(type: "SQLInjection" | "XSS", code: string, severity: string): string {
+  if (type === "SQLInjection") {
+    const hasDirectInput = /\$_(GET|POST|REQUEST|COOKIE|SERVER)\[/.test(code);
+    const hasQueryConcat = /=\s*"[^"]*"\s*\+|=\s*'[^']*'\s*\+|\.\s*\$/.test(code);
+    
+    if (hasDirectInput || hasQueryConcat) {
+      if (severity === "Kritis") {
+        return "Aplikasi membangun SQL query langsung dari input pengguna tanpa parameterisasi. Ini memungkinkan SQL Injection attack untuk memodifikasi query, mencuri data, atau merusak database.";
+      }
+      return "Aplikasi menggunakan string concatenation untuk membangun SQL query dengan data dinamis. Beberapa input mungkin tidak tersanitasi dengan baik, meningkatkan risiko SQL Injection.";
+    }
+    
+    return "Database query menggunakan variabel yang mungkin berasal dari input pengguna tanpa proper prepared statement atau parameterized query.";
+  } else if (type === "XSS") {
+    const hasDbVariable = /\$row\[|->|fetch|result\[/.test(code);
+    const hasDirectOutput = /echo|print|innerHTML/.test(code);
+    
+    if (hasDirectOutput) {
+      if (hasDbVariable) {
+        return "Data dari database ditampilkan langsung ke HTML tanpa encoding/escaping. Jika data tersebut pernah disimpan dari user input, ini adalah Stored XSS vulnerability.";
+      }
+      return "Input pengguna ditampilkan langsung ke HTML tanpa encoding/escaping, memungkinkan attacker untuk inject script berbahaya (Reflected XSS).";
+    }
+    
+    return "Konten yang mungkin mengandung user input ditampilkan tanpa proper encoding/sanitasi, menciptakan potensi XSS attack.";
+  }
+  
+  return "Kerentanan keamanan terdeteksi dalam aplikasi.";
+}
+
+/**
+ * Generate remediation text yang berbeda dari description
+ */
+function generateRemediationText(type: "SQLInjection" | "XSS", code: string, severity: string): string {
+  if (type === "SQLInjection") {
+    return `PERBAIKAN SEGERA DIPERLUKAN - Gunakan Prepared Statements atau Parameterized Queries:
+    
+1. Ganti string concatenation dengan placeholder (?)
+2. Gunakan prepared statement: $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?")
+3. Bind parameter: $stmt->bind_param("i", $id)
+4. Validasi input di sisi server: cek tipe data (integer, string, email)
+5. Test dengan payload berbahaya seperti ' OR 1=1-- untuk memastikan protection
+
+Contoh aman: Gunakan ORM seperti Eloquent, Doctrine, atau SQLAlchemy yang handle escaping otomatis.`;
+  } else if (type === "XSS") {
+    return `PERBAIKAN SEGERA DIPERLUKAN - Encode/Escape semua output ke HTML context:
+    
+1. Untuk PHP echo: gunakan htmlspecialchars($var, ENT_QUOTES, 'UTF-8')
+2. Untuk JavaScript: gunakan DOMPurify library atau textContent bukan innerHTML
+3. Implementasi Content Security Policy (CSP) header
+4. Validasi input format di sisi server sebelum menyimpan
+5. Test dengan payload XSS seperti <img src=x onerror=alert('xss')> untuk memastikan encoding bekerja
+
+Konteks encoding penting: HTML context ≠ JavaScript context ≠ URL context`;
+  }
+  
+  return "Gunakan teknik mitigasi yang sesuai untuk vulnerability type ini.";
+}
+
+/**
+ * Detect apakah XSS adalah Stored atau Reflected
+ */
+function detectXSSType(code: string): "Stored XSS" | "Reflected XSS" {
+  // Stored XSS: data dari database/storage
+  const hasDbFetch = /\$row\[|->|fetch|result\[|mysqli_fetch|pg_fetch|pdo->query|->get|->all/.test(code);
+  const hasOutput = /echo|print|innerHTML|appendChild/.test(code);
+  
+  if (hasDbFetch && hasOutput) {
+    return "Stored XSS";
+  }
+  
+  // Reflected XSS: data dari request query/form
+  const hasRequestInput = /\$_(GET|POST|REQUEST|COOKIE)\[/.test(code);
+  if (hasRequestInput && hasOutput) {
+    return "Reflected XSS";
+  }
+  
+  // Default ke Reflected jika tidak bisa detect
+  return "Reflected XSS";
+}
+
+/**
+ * Determine primary line untuk SQLi (source line jika ada assignment, else sink line)
+ */
+function determinePrimaryLineForSQLi(code: string, contextBefore: string[], line: number): { primaryLine: number; sourceLine: number | null; sinkLine: number } {
+  const isAssignment = /^\s*\$[a-zA-Z_][a-zA-Z0-9_]*\s*=/.test(code) && /select|insert|update|delete/i.test(code);
+  const isSink = /mysqli_query|mysql_query|->query|prepare|exec/i.test(code);
+  
+  if (isAssignment) {
+    // This is query assignment - report as primary line
+    return { primaryLine: line, sourceLine: line, sinkLine: null as any };
+  } else if (isSink) {
+    // This is sink execution - check if query assignment is nearby (in context)
+    const contextCode = contextBefore.map(l => l.trim()).join(" ");
+    const hasNearbyAssignment = /\$[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*"[^"]*select/i.test(contextCode);
+    
+    if (hasNearbyAssignment) {
+      // Query assignment is before this sink - sourceLine is contextBefore line
+      const assignmentLine = line - contextBefore.length;
+      return { primaryLine: line, sourceLine: assignmentLine, sinkLine: line };
+    }
+  }
+  
+  return { primaryLine: line, sourceLine: null, sinkLine: line };
+}
+
 export interface ScanResult {
   success: boolean;
   summary: {
@@ -98,6 +280,136 @@ Parameters: [':id' => $id, ':status' => 'active']`;
   
   return `// ✅ Safe code example
 // Implement proper input validation and sanitization`;
+}
+
+function extractPhpVariableName(code: string): string | null {
+  if (!code) return null;
+  const match = code.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/);
+  return match ? match[0] : null;
+}
+
+function extractAssignedPhpVariable(code: string): string | null {
+  if (!code) return null;
+  const match = code.match(/^\s*(\$[a-zA-Z_][a-zA-Z0-9_]*)\s*=/);
+  return match ? match[1] : null;
+}
+
+function extractSqlSinkArgumentVariable(code: string): string | null {
+  if (!code) return null;
+
+  const mysqliMatch = code.match(/mysqli_query\s*\([^,]+,\s*(\$[a-zA-Z_][a-zA-Z0-9_]*)/i);
+  if (mysqliMatch) return mysqliMatch[1];
+
+  const mysqlMatch = code.match(/mysql_query\s*\(\s*(\$[a-zA-Z_][a-zA-Z0-9_]*)/i);
+  if (mysqlMatch) return mysqlMatch[1];
+
+  const queryMethodMatch = code.match(/->query\s*\(\s*(\$[a-zA-Z_][a-zA-Z0-9_]*)/i);
+  if (queryMethodMatch) return queryMethodMatch[1];
+
+  const execMatch = code.match(/exec\s*\(\s*(\$[a-zA-Z_][a-zA-Z0-9_]*)/i);
+  if (execMatch) return execMatch[1];
+
+  return null;
+}
+
+function isSqlQueryAssignment(code: string): boolean {
+  if (!code) return false;
+  const normalized = code.replace(/\s+/g, " ").toLowerCase();
+  return normalized.includes("=") && /select|insert|update|delete/.test(normalized);
+}
+
+function isSqlExecutionSink(code: string): boolean {
+  if (!code) return false;
+  const normalized = code.replace(/\s+/g, " ").toLowerCase();
+  return /mysqli_query|mysql_query|->query\(|prepare\(|exec\(/.test(normalized);
+}
+
+function deduplicateNormalizedVulnerabilities(vulnerabilities: ScanResult["vulnerabilities"]): ScanResult["vulnerabilities"] {
+  if (!vulnerabilities.length) return vulnerabilities;
+
+  const deduped: ScanResult["vulnerabilities"] = [];
+
+  for (const vuln of vulnerabilities) {
+    if (vuln.type !== "SQLInjection") {
+      deduped.push(vuln);
+      continue;
+    }
+
+    const currentVar = extractPhpVariableName(vuln.code || "");
+    const currentAssignedVar = extractAssignedPhpVariable(vuln.code || "");
+    const currentSinkQueryVar = extractSqlSinkArgumentVariable(vuln.code || "");
+    const currentLooksLikeAssignment = isSqlQueryAssignment(vuln.code || "");
+    const currentLooksLikeSink = isSqlExecutionSink(vuln.code || "");
+
+    const duplicateIndex = deduped.findIndex((existing) => {
+      if (existing.type !== "SQLInjection") return false;
+      if (existing.file !== vuln.file) return false;
+
+      const lineDistance = Math.abs((existing.line || 0) - (vuln.line || 0));
+      if (lineDistance > 2) return false;
+
+      const existingVar = extractPhpVariableName(existing.code || "");
+      const existingLooksLikeAssignment = isSqlQueryAssignment(existing.code || "");
+      const existingLooksLikeSink = isSqlExecutionSink(existing.code || "");
+      const existingAssignedVar = extractAssignedPhpVariable(existing.code || "");
+      const existingSinkQueryVar = extractSqlSinkArgumentVariable(existing.code || "");
+
+      // Same exact SQLi line + type is always duplicate.
+      if (existing.line === vuln.line && existing.type === vuln.type) return true;
+
+      // Core rule: assignment + sink near each other for same query variable.
+      if (existingLooksLikeAssignment && currentLooksLikeSink) {
+        if (existingAssignedVar && currentSinkQueryVar && existingAssignedVar === currentSinkQueryVar) {
+          return true;
+        }
+      }
+
+      if (currentLooksLikeAssignment && existingLooksLikeSink) {
+        if (currentAssignedVar && existingSinkQueryVar && currentAssignedVar === existingSinkQueryVar) {
+          return true;
+        }
+      }
+
+      // Fallback for older engines where sink/query var extraction may fail.
+      if (existingLooksLikeAssignment && currentLooksLikeSink) {
+        if (existingVar && currentVar && existingVar === currentVar) {
+          return true;
+        }
+      }
+
+      if (currentLooksLikeAssignment && existingLooksLikeSink) {
+        if (existingVar && currentVar && existingVar === currentVar) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (duplicateIndex === -1) {
+      deduped.push(vuln);
+      continue;
+    }
+
+    const existing = deduped[duplicateIndex];
+    const keepCurrent = isSqlExecutionSink(vuln.code || "") && !isSqlExecutionSink(existing.code || "");
+
+    if (keepCurrent) {
+      deduped[duplicateIndex] = vuln;
+    }
+
+    console.log(
+      `[SCANNER-CLI][DEDUP] Merged duplicate SQLi near line ${existing.line}/${vuln.line} in ${vuln.file}`
+    );
+  }
+
+  if (deduped.length < vulnerabilities.length) {
+    console.log(
+      `[SCANNER-CLI][DEDUP] Removed ${vulnerabilities.length - deduped.length} SQLi duplicate(s) after normalization`
+    );
+  }
+
+  return deduped;
 }
 
 /**
@@ -275,42 +587,64 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
 
       console.log(`[SCANNER-CLI] Final code for ${vuln.file}:${vuln.line}: ${actualCode ? `✓ ${actualCode.substring(0, 50)}...` : "✗ EMPTY"}`);
 
+      // Generate quality-enhanced vulnerability data
+      const detailedDescription = generateDetailedDescription(type, actualCode, severity);
+      const remediationText = generateRemediationText(type, actualCode, severity);
+      const detailedTaintPath = generateDetailedTaintPath(actualCode, type);
+      const cwe = getCWEForVulnerabilityType(type);
+      
+      // XSS-specific: detect Stored vs Reflected
+      let xssType = "";
+      if (type === "XSS") {
+        xssType = `- ${detectXSSType(actualCode)}`;
+      }
+      
+      // SQLi-specific: determine primary line (source vs sink)
+      let primaryLine = vuln.line || 0;
+      if (type === "SQLInjection") {
+        const contextBefore = extractedCodeData.codeContext?.before || [];
+        const lineInfo = determinePrimaryLineForSQLi(actualCode, contextBefore, vuln.line || 0);
+        primaryLine = lineInfo.primaryLine;
+        console.log(`[SCANNER-CLI] SQLi line mapping - Primary: ${lineInfo.primaryLine}, Source: ${lineInfo.sourceLine}, Sink: ${lineInfo.sinkLine}`);
+      }
+
       return {
         id: vuln.type.toLowerCase(),
         type,
         severity,
         file: vuln.file || "unknown",
-        line: vuln.line || 0,
+        line: primaryLine,  // Use computed primary line instead of raw vuln.line
         code: actualCode,
-        description: vuln.explanation || vuln.vulnerability || "",
-        remediation:
-          vuln.remediation?.description || vuln.remediation?.recommendations?.[0] || "",
+        description: detailedDescription,  // Now detailed and specific
+        remediation: remediationText,      // Now different from description
         riskScore: vuln.riskScore || 8,
         confidence: Math.round((vuln.confidence || 0.8) * 100),
         exploitability: vuln.exploitability || 8,
         codeContext: vuln.codeContext || extractedCodeData.codeContext,
-        owasp: vuln.owasp?.category || "",
-        cwe: vuln.owasp?.cwe || "CWE-1035",
-        taintPath: ["Source", "→", "Sink"],
+        owasp: vuln.owasp?.category || "A03:2021 – Injection",  // Better default OWASP
+        cwe: cwe,  // Auto-mapped CWE
+        taintPath: detailedTaintPath,  // Detailed taint path with variables
         codeExample: {
-          vulnerable: `// ❌ Vulnerable code - From file: ${vuln.file || "unknown"}:${vuln.line || "?"}\n${actualCode || "(Code could not be extracted)"}`,
+          vulnerable: `// ❌ Vulnerable code - From file: ${vuln.file || "unknown"}:${primaryLine || "?"}\n${actualCode || "(Code could not be extracted)"}`,
           safe: generateSafeCodeExample(type, actualCode || ""),
         },
       };
     });
 
+    const deduplicatedVulnerabilities = deduplicateNormalizedVulnerabilities(vulnerabilities);
+
     // Count by type dan severity
     const summary = {
-      totalVulnerabilities: vulnerabilities.length,
+      totalVulnerabilities: deduplicatedVulnerabilities.length,
       vulnerabilitiesByType: {
-        SQLInjection: vulnerabilities.filter((v) => v.type === "SQLInjection").length,
-        XSS: vulnerabilities.filter((v) => v.type === "XSS").length,
+        SQLInjection: deduplicatedVulnerabilities.filter((v) => v.type === "SQLInjection").length,
+        XSS: deduplicatedVulnerabilities.filter((v) => v.type === "XSS").length,
       },
       vulnerabilitiesBySeverity: {
-        Kritis: vulnerabilities.filter((v) => v.severity === "Kritis").length,
-        Tinggi: vulnerabilities.filter((v) => v.severity === "Tinggi").length,
-        Sedang: vulnerabilities.filter((v) => v.severity === "Sedang").length,
-        Rendah: vulnerabilities.filter((v) => v.severity === "Rendah").length,
+        Kritis: deduplicatedVulnerabilities.filter((v) => v.severity === "Kritis").length,
+        Tinggi: deduplicatedVulnerabilities.filter((v) => v.severity === "Tinggi").length,
+        Sedang: deduplicatedVulnerabilities.filter((v) => v.severity === "Sedang").length,
+        Rendah: deduplicatedVulnerabilities.filter((v) => v.severity === "Rendah").length,
       },
     };
 
@@ -322,7 +656,7 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
     const normalizedResult: ScanResult = {
       success: true,
       summary,
-      vulnerabilities,
+      vulnerabilities: deduplicatedVulnerabilities,
       layerResults: {
         layer1_lexical: vulnerabilitiesArray.length,
         layer2_ast: 0,

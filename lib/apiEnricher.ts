@@ -102,9 +102,59 @@ function mapSeverity(indonesianSeverity: string): SeverityLevel {
 }
 
 /**
+ * Improve OWASP mapping dengan sub-categories untuk XSS
+ */
+function getEnhancedOWASPMapping(vulnType: "SQLInjection" | "XSS", code: string, description: string): string {
+  const baseOWASP = "A03:2021 – Injection"
+  
+  if (vulnType === "XSS") {
+    if (description.includes("Stored")) {
+      return "A03:2021 – Injection (Stored XSS)"
+    } else if (description.includes("Reflected")) {
+      return "A03:2021 – Injection (Reflected XSS)"
+    }
+    return "A03:2021 – Injection (Cross-site Scripting)"
+  } else if (vulnType === "SQLInjection") {
+    return "A03:2021 – Injection (SQL Injection)"
+  }
+  
+  return baseOWASP
+}
+
+/**
+ * Map vulnerability type ke rule ID untuk remediation lookup - dengan context awareness
+ */
+function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: SeverityLevel, code: string = "", description: string = ""): string {
+  const prefix = vulnType === "XSS" ? "XSS" : "SQLI"
+  
+  // Map ke existing remediation guides
+  const ruleMap: Record<string, string> = {
+    "XSS_CRITICAL": "XSS_001",      // Direct Echo
+    "XSS_HIGH": "XSS_002",          // Reflected XSS
+    "XSS_MEDIUM": "XSS_003",        // Stored XSS
+    "XSS_LOW": "XSS_004",           // CSS/SVG Injection
+    
+    "SQLI_CRITICAL": "SQLI_001",    // Direct Query
+    "SQLI_HIGH": "SQLI_002",        // String Concat
+    "SQLI_MEDIUM": "SQLI_003",      // Dynamic Building
+    "SQLI_LOW": "SQLI_004",         // Potential injection
+  }
+  
+  const key = `${prefix}_${severity}`
+  let ruleId = ruleMap[key] || `${prefix}_001`
+  
+  // Fine-tune based on description/code patterns
+  if (vulnType === "XSS" && description.includes("Stored")) {
+    ruleId = "XSS_003"  // Stored XSS
+  }
+  
+  return ruleId
+}
+
+/**
  * Map vulnerability type ke rule ID untuk remediation lookup
  */
-function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: SeverityLevel): string {
+function getRemediationRuleId_old(vulnType: "SQLInjection" | "XSS", severity: SeverityLevel): string {
   const prefix = vulnType === "XSS" ? "XSS" : "SQLI"
   
   // Map ke existing remediation guides
@@ -129,7 +179,7 @@ function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: Severi
  */
 function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
   const mappedSeverity = mapSeverity(vuln.severity)
-  const ruleId = getRemediationRuleId(vuln.type, mappedSeverity)
+  const ruleId = getRemediationRuleId(vuln.type, mappedSeverity, vuln.code, vuln.description)
   
   // Try to get remediation guide
   let remediationGuide = undefined
@@ -164,6 +214,9 @@ function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
     "SQLInjection": "Gunakan prepared statements dengan parameterized queries untuk semua database operations."
   }
   
+  // Enhanced OWASP mapping with XSS sub-categories
+  const enhancedOWASP = getEnhancedOWASPMapping(vuln.type, vuln.code, vuln.description)
+  
   return {
     id: `${vuln.type}_${index}`,
     type: vuln.type,
@@ -171,16 +224,16 @@ function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
     file: vuln.file,
     line: vuln.line,
     code: vuln.code,
-    description: vuln.description,
-    remediation: vuln.remediation,
+    description: vuln.description,  // Already detailed from scannerCLI
+    remediation: vuln.remediation,  // Already detailed from scannerCLI
     taintPath: vuln.taintPath || [],
     codeExample: vuln.codeExample || { vulnerable: "", safe: "" },
     riskScore: vuln.riskScore,
     confidence: vuln.confidence,
     exploitability: vuln.exploitability,
     codeContext: vuln.codeContext,
-    owasp: vuln.owasp,
-    cwe: vuln.cwe,
+    owasp: enhancedOWASP,  // Now with XSS sub-categories
+    cwe: vuln.cwe,  // Already auto-mapped from scannerCLI
     
     // NEW enriched fields
     remediationGuide,
@@ -215,6 +268,39 @@ function calculateDetectionAccuracy(
 }
 
 /**
+ * Deduplicate vulnerabilities by (file + line + type)
+ * Removes exact duplicates caused by multiple detection passes (regex, AST, taint)
+ */
+function deduplicateVulnerabilities(vulnerabilities: VulnerabilityEnriched[]): VulnerabilityEnriched[] {
+  const seen = new Map<string, VulnerabilityEnriched>()
+  const deduped: VulnerabilityEnriched[] = []
+  
+  vulnerabilities.forEach((vuln, index) => {
+    // Create unique key based on file + line + type
+    const key = `${vuln.file}:${vuln.line}:${vuln.type}`
+    
+    if (!seen.has(key)) {
+      // First occurrence - keep it
+      seen.set(key, vuln)
+      deduped.push(vuln)
+    } else {
+      // Duplicate found - log it but skip
+      console.log(
+        `[DEDUP] Removed duplicate: ${vuln.type} at ${vuln.file}:${vuln.line} ` +
+        `(kept index ${deduped.length - 1}, skipped index ${index})`
+      )
+    }
+  })
+  
+  if (deduped.length < vulnerabilities.length) {
+    const removedCount = vulnerabilities.length - deduped.length
+    console.log(`[DEDUP] Removed ${removedCount} duplicate(s) from ${vulnerabilities.length} total vulnerabilities`)
+  }
+  
+  return deduped
+}
+
+/**
  * Main enrichment function - Transform raw scan result
  */
 export function enrichScanResult(rawScanResult: any): EnrichedScanResponse {
@@ -225,26 +311,29 @@ export function enrichScanResult(rawScanResult: any): EnrichedScanResponse {
     enrichVulnerability(vuln, index)
   )
   
+  // Remove duplicates based on file + line + type
+  const deduplicatedVulnerabilities = deduplicateVulnerabilities(enrichedVulnerabilities)
+  
   // Count by severity
-  const criticalCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "CRITICAL").length
-  const highCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "HIGH").length
-  const mediumCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "MEDIUM").length
-  const lowCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "LOW").length
+  const criticalCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "CRITICAL").length
+  const highCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "HIGH").length
+  const mediumCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "MEDIUM").length
+  const lowCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.severity === "LOW").length
   
   // Count by type
-  const xssCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.type === "XSS").length
-  const sqliCount = enrichedVulnerabilities.filter((v: VulnerabilityEnriched) => v.type === "SQLInjection").length
+  const xssCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.type === "XSS").length
+  const sqliCount = deduplicatedVulnerabilities.filter((v: VulnerabilityEnriched) => v.type === "SQLInjection").length
   
   // Calculate metrics
   const healthScore = calculateHealthScore(criticalCount, highCount, mediumCount, lowCount)
-  const securityStatus = determineSecurityStatus(criticalCount, highCount, mediumCount, lowCount, enrichedVulnerabilities.length)
+  const securityStatus = determineSecurityStatus(criticalCount, highCount, mediumCount, lowCount, deduplicatedVulnerabilities.length)
   const criticalAlerts = calculateCriticalAlerts(criticalCount, highCount)
   const detectionAccuracy = calculateDetectionAccuracy(criticalCount, highCount, mediumCount, lowCount)
   
   return {
     success: true,
     summary: {
-      totalVulnerabilities: enrichedVulnerabilities.length,
+      totalVulnerabilities: deduplicatedVulnerabilities.length,
       vulnerabilitiesByType: {
         XSS: xssCount,
         SQLInjection: sqliCount,
@@ -259,7 +348,7 @@ export function enrichScanResult(rawScanResult: any): EnrichedScanResponse {
       securityStatus,
       criticalAlerts,
     },
-    vulnerabilities: enrichedVulnerabilities,
+    vulnerabilities: deduplicatedVulnerabilities,
     metadata: {
       scanDate: new Date().toISOString(),
       detectionAccuracy,
