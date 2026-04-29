@@ -110,7 +110,7 @@ function generateDetailedTaintPath(code: string, type: "SQLInjection" | "XSS", c
       path.push(source);
     }
     
-    // Step 2: Extract INTERMEDIATE VARIABLES (HTML/echo variables)
+    // Step 2: Extract INTERMEDIATE VARIABLES (HTML/echo variables) 
     const htmlVar = extractPhpVariableName(code);
     const intermediateVars: string[] = [];
     if (htmlVar && !intermediateVars.includes(htmlVar)) intermediateVars.push(htmlVar);
