@@ -33,6 +33,7 @@ interface VulnerabilityEnriched {
   }
   owasp?: string
   cwe?: string
+  xssType?: string
   
   // NEW: Enriched fields
   remediationGuide?: {
@@ -104,13 +105,13 @@ function mapSeverity(indonesianSeverity: string): SeverityLevel {
 /**
  * Improve OWASP mapping dengan sub-categories untuk XSS
  */
-function getEnhancedOWASPMapping(vulnType: "SQLInjection" | "XSS", code: string, description: string): string {
+function getEnhancedOWASPMapping(vulnType: "SQLInjection" | "XSS", code: string, description: string, xssType: string = "", ruleId: string = ""): string {
   const baseOWASP = "A03:2021 – Injection"
   
   if (vulnType === "XSS") {
-    if (description.includes("Stored")) {
+    if (ruleId === "XSS_003" || /Stored/i.test(xssType) || description.includes("Stored")) {
       return "A03:2021 – Injection (Stored XSS)"
-    } else if (description.includes("Reflected")) {
+    } else if (ruleId === "XSS_002" || /Reflected/i.test(xssType) || description.includes("Reflected")) {
       return "A03:2021 – Injection (Reflected XSS)"
     }
     return "A03:2021 – Injection (Cross-site Scripting)"
@@ -124,7 +125,15 @@ function getEnhancedOWASPMapping(vulnType: "SQLInjection" | "XSS", code: string,
 /**
  * Map vulnerability type ke rule ID untuk remediation lookup - dengan context awareness
  */
-function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: SeverityLevel, code: string = "", description: string = ""): string {
+function getRemediationRuleId(
+  vulnType: "SQLInjection" | "XSS",
+  severity: SeverityLevel,
+  code: string = "",
+  description: string = "",
+  xssType: string = "",
+  codeContext?: { before: string[]; target: string; after: string[] },
+  ruleIdHint: string = ""
+): string {
   const prefix = vulnType === "XSS" ? "XSS" : "SQLI"
   
   // Map ke existing remediation guides
@@ -145,19 +154,25 @@ function getRemediationRuleId(vulnType: "SQLInjection" | "XSS", severity: Severi
   
   // For XSS: Detect if Stored XSS (from database) vs Reflected XSS (from query)
   if (vulnType === "XSS") {
-    // Check if description or code mentions database sources
-    const isStoredXSS = 
-      description.includes("Stored") || 
-      description.includes("database") || 
-      code.includes("$row[") ||
-      code.includes("->") ||
-      code.includes("mysqli_fetch") ||
-      code.includes("pg_fetch") ||
-      code.includes("->fetch");
-    
+    const contextStr = [
+      code,
+      description,
+      xssType,
+      codeContext?.before?.join(" ") || "",
+      codeContext?.after?.join(" ") || ""
+    ].join(" ");
+
+    const isStoredXSS =
+      ruleIdHint === "XSS_003" ||
+      /Stored/i.test(xssType) ||
+      description.includes("Stored") ||
+      description.includes("database") ||
+      /\$row\[|mysqli_fetch|mysql_fetch|pg_fetch|fetch_assoc|fetch_row|fetch_array|fetchObject|fetchArray|->fetch|->query/.test(contextStr) ||
+      (/\$[a-zA-Z_][a-zA-Z0-9_]*/.test(code) && /row|fetch|result|database/i.test(contextStr));
+
     if (isStoredXSS) {
       ruleId = "XSS_003";  // Stored XSS (from database)
-    } else {
+    } else if (ruleIdHint === "XSS_002" || /Reflected/i.test(xssType) || description.includes("Reflected")) {
       ruleId = "XSS_002";  // Reflected XSS (from query params)
     }
   }
@@ -193,7 +208,15 @@ function getRemediationRuleId_old(vulnType: "SQLInjection" | "XSS", severity: Se
  */
 function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
   const mappedSeverity = mapSeverity(vuln.severity)
-  const ruleId = getRemediationRuleId(vuln.type, mappedSeverity, vuln.code, vuln.description)
+  const ruleId = getRemediationRuleId(
+    vuln.type,
+    mappedSeverity,
+    vuln.code,
+    vuln.description,
+    vuln.xssType,
+    vuln.codeContext,
+    vuln.ruleId
+  )
   
   // Try to get remediation guide
   let remediationGuide = undefined
@@ -229,7 +252,7 @@ function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
   }
   
   // Enhanced OWASP mapping with XSS sub-categories
-  const enhancedOWASP = getEnhancedOWASPMapping(vuln.type, vuln.code, vuln.description)
+  const enhancedOWASP = getEnhancedOWASPMapping(vuln.type, vuln.code, vuln.description, vuln.xssType, ruleId)
   
   return {
     id: `${vuln.type}_${index}`,
@@ -248,6 +271,7 @@ function enrichVulnerability(vuln: any, index: number): VulnerabilityEnriched {
     codeContext: vuln.codeContext,
     owasp: enhancedOWASP,  // Now with XSS sub-categories
     cwe: vuln.cwe,  // Already auto-mapped from scannerCLI
+    xssType: vuln.xssType,
     
     // NEW enriched fields
     remediationGuide,

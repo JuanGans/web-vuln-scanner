@@ -222,18 +222,29 @@ Konteks encoding penting: HTML context ≠ JavaScript context ≠ URL context`;
 /**
  * Detect apakah XSS adalah Stored atau Reflected
  */
-function detectXSSType(code: string): "Stored XSS" | "Reflected XSS" {
-  // Stored XSS: data dari database/storage
-  const hasDbFetch = /\$row\[|->|fetch|result\[|mysqli_fetch|pg_fetch|pdo->query|->get|->all/.test(code);
-  const hasOutput = /echo|print|innerHTML|appendChild/.test(code);
+function detectXSSType(code: string, contextBefore: string[] = []): "Stored XSS" | "Reflected XSS" {
+  // Stored XSS: data dari database/storage - check both current line AND context
+  const contextStr = (contextBefore || []).join(" ");
+  const codeAndContext = `${code} ${contextStr}`;
   
-  if (hasDbFetch && hasOutput) {
+  // Explicit database indicators for Stored XSS
+  const hasRowVar = /\$row\s*\[/.test(codeAndContext);
+  const hasDbFetch = /mysqli_fetch|mysql_fetch|pg_fetch|fetch_assoc|fetch_array|fetchObject/.test(codeAndContext);
+  const hasOutput = /echo|print|innerHTML|appendChild|\$html\s*\.=|\$output\s*\.=/.test(code);
+  
+  if ((hasRowVar || hasDbFetch) && hasOutput) {
+    return "Stored XSS";
+  }
+
+  // Fallback: jika sumber data dari DB terdeteksi, tetap klasifikasikan sebagai Stored XSS
+  // meskipun sink/output ada di baris berbeda.
+  if (hasRowVar || hasDbFetch) {
     return "Stored XSS";
   }
   
   // Reflected XSS: data dari request query/form
-  const hasRequestInput = /\$_(GET|POST|REQUEST|COOKIE)\[/.test(code);
-  if (hasRequestInput && hasOutput) {
+  const hasRequestInput = /\$_(GET|POST|REQUEST|COOKIE)\[/.test(codeAndContext);
+  if (hasRequestInput) {
     return "Reflected XSS";
   }
   
@@ -306,6 +317,7 @@ export interface ScanResult {
     };
     owasp?: string;
     cwe?: string;
+    xssType?: string;
     taintPath?: string[];
     codeExample?: {
       vulnerable: string;
@@ -637,7 +649,31 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
     };
 
     // Convert SecureCLI format → web interface format
-    const vulnerabilities = vulnerabilitiesArray.map((vuln: any) => {
+    // First filter out false positives (SQLi on hardcoded queries with no user taint)
+    
+    // Debug: log each vulnerability before filtering
+    vulnerabilitiesArray.forEach((vuln: any) => {
+      const code = vuln.originalCode?.trim() || vuln.code?.trim() || "";
+      console.log(`[FP-CHECK] ${vuln.file}:${vuln.line} type=${vuln.type} code="${code.substring(0, 80)}"`);
+    });
+    
+    const filteredVulnerabilities = vulnerabilitiesArray.filter((vuln: any) => {
+      // For SQLi: check if query has actual user input
+      if (vuln.type.startsWith("SQLI")) {
+        const code = vuln.originalCode?.trim() || vuln.code?.trim() || "";
+        const contextBefore = vuln.codeContext?.before || [];
+        const contextStr = `${code} ${(contextBefore || []).join(" ")}`;
+        
+        // Check for hardcoded query at line 55 (SELECT COUNT without parameter)
+        if (/SELECT COUNT\(\*\)/.test(code) && !/\$_(GET|POST|REQUEST|SESSION|COOKIE)/.test(contextStr)) {
+          console.log(`[SCANNER-CLI] Filtering out false positive SQLi at ${vuln.file}:${vuln.line} - hardcoded query without user taint`);
+          return false;  // Skip this false positive
+        }
+      }
+      return true;  // Keep this finding
+    });
+
+    const vulnerabilities = filteredVulnerabilities.map((vuln: any) => {
       // Map type: SQLI_* → SQLInjection, XSS_* → XSS
       let type: "SQLInjection" | "XSS" = "XSS";
       if (vuln.type.startsWith("SQLI")) {
@@ -673,6 +709,19 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       // Use contextBefore from scanner result first (vuln.codeContext), then fallback to extraction
       const contextBefore = vuln.codeContext?.before || extractedCodeData.codeContext?.before || [];
       const contextAfter = vuln.codeContext?.after || extractedCodeData.codeContext?.after || [];
+
+      // SQLi false-positive guard: hardcoded COUNT query executed without any user taint.
+      if (type === "SQLInjection") {
+        const combinedContext = `${actualCode} ${(contextBefore || []).join(" ")}`;
+        const hasHardcodedCountQuery = /SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM/i.test(combinedContext);
+        const hasUserInputTaint = /\$_(GET|POST|REQUEST|SESSION|COOKIE|SERVER)\[/.test(combinedContext);
+
+        if (hasHardcodedCountQuery && !hasUserInputTaint) {
+          console.log(`[SCANNER-CLI] Filtering SQLi false positive at ${vuln.file}:${vuln.line} (hardcoded COUNT query without user taint)`);
+          return null;
+        }
+      }
+
       const detailedDescription = generateDetailedDescription(type, actualCode, severity, contextBefore);
       const remediationText = generateRemediationText(type, actualCode, severity);
       const detailedTaintPath = generateDetailedTaintPath(actualCode, type, contextBefore, contextAfter);
@@ -681,7 +730,10 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
       // XSS-specific: detect Stored vs Reflected
       let xssType = "";
       if (type === "XSS") {
-        xssType = `- ${detectXSSType(actualCode)}`;
+        console.log(`[XSS-DETECT] ${vuln.file}:${vuln.line} contextBefore length: ${contextBefore.length}`);
+        console.log(`[XSS-DETECT] ${vuln.file}:${vuln.line} contextBefore: ${JSON.stringify(contextBefore)}`);
+        xssType = `- ${detectXSSType(actualCode, contextBefore)}`;
+        console.log(`[XSS-DETECT] ${vuln.file}:${vuln.line} result: ${xssType}`);
       }
       
       // SQLi-specific: determine primary line (source vs sink)
@@ -690,6 +742,24 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
         const lineInfo = determinePrimaryLineForSQLi(actualCode, contextBefore, vuln.line || 0);
         primaryLine = lineInfo.primaryLine;
         console.log(`[SCANNER-CLI] SQLi line mapping - Primary: ${lineInfo.primaryLine}, Source: ${lineInfo.sourceLine}, Sink: ${lineInfo.sinkLine}`);
+      }
+
+      // Determine ruleId based on vulnerability type and XSS classification
+      let ruleId = "VULN_001"; // Default
+      if (type === "XSS") {
+        ruleId = xssType.includes("Stored") ? "XSS_003" : "XSS_002";
+      } else if (type === "SQLInjection") {
+        ruleId = "SQLI_001";
+      }
+      
+      // Build OWASP category with type-specific details
+      let owaspCategory = "A03:2021 – Injection";
+      if (type === "XSS") {
+        owaspCategory = xssType.includes("Stored") 
+          ? "A03:2021 – Injection (Stored XSS)"
+          : "A03:2021 – Injection (Reflected XSS)";
+      } else if (type === "SQLInjection") {
+        owaspCategory = "A03:2021 – Injection (SQL Injection)";
       }
 
       return {
@@ -705,15 +775,17 @@ export const runSecureCLIScan = async (targetPath: string): Promise<ScanResult> 
         confidence: Math.round((vuln.confidence || 0.8) * 100),
         exploitability: vuln.exploitability || 8,
         codeContext: vuln.codeContext || extractedCodeData.codeContext,
-        owasp: vuln.owasp?.category || "A03:2021 – Injection",  // Better default OWASP
+        ruleId: ruleId,  // ✅ NEW: Rule ID with XSS type awareness
+        owasp: owaspCategory,  // ✅ IMPROVED: OWASP with type-specific details
         cwe: cwe,  // Auto-mapped CWE
         taintPath: detailedTaintPath,  // Detailed taint path with variables
+        xssType: type === "XSS" ? xssType.replace("- ", "") : undefined,  // ✅ NEW: Include XSS type explicitly
         codeExample: {
           vulnerable: `// ❌ Vulnerable code - From file: ${vuln.file || "unknown"}:${primaryLine || "?"}\n${actualCode || "(Code could not be extracted)"}`,
           safe: generateSafeCodeExample(type, actualCode || ""),
         },
       };
-    });
+    }).filter((v): v is NonNullable<typeof v> => v !== null);
 
     const deduplicatedVulnerabilities = deduplicateNormalizedVulnerabilities(vulnerabilities);
 
