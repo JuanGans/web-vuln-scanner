@@ -3,7 +3,7 @@
 import { Navbar } from "@/components/navbar"
 import { RemediationCard } from "@/components/RemediationCard"
 import { TrendChart } from "@/components/TrendChart"
-import { ChevronRight, ChevronDown, Copy, ArrowLeft } from "lucide-react"
+import { ChevronRight, ChevronDown, Copy, ArrowLeft, RefreshCw } from "lucide-react"
 import { Manrope } from "next/font/google"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
@@ -47,6 +47,20 @@ interface ScanDetail {
         Sedang?: number
         Rendah?: number
       }
+    }
+    isRescan?: boolean
+    originalScanId?: string
+    comparison?: {
+      fixed: Array<unknown>
+      remaining: Array<unknown>
+      newFound: Array<unknown>
+    }
+    scoreImprovement?: {
+      before: number
+      after: number
+      fixed: number
+      newFound: number
+      percentageFixed: number
     }
     vulnerabilities?: Array<{
       id: string
@@ -288,9 +302,25 @@ export default function ScanDetailPage() {
 
         {/* Title and Info */}
         <div className="mb-12">
-          <h1 className={`${manrope.className} text-5xl font-extrabold tracking-tight text-on-surface mb-4`}>
-            Scan Result: {getProjectName(data)}
-          </h1>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h1 className={`${manrope.className} text-5xl font-extrabold tracking-tight text-on-surface mb-4`}>
+                Scan Result: {getProjectName(data)}
+              </h1>
+              {data.result?.isRescan && (
+                <span className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
+                  Rescan
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => router.push(`/upload?scanId=${id}`)}
+              className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-white font-bold text-sm hover:shadow-lg transition-all shrink-0"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Rescan File
+            </button>
+          </div>
           <div className="flex flex-wrap gap-6 mt-4">
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Description</p>
@@ -507,6 +537,7 @@ export default function ScanDetailPage() {
             </div>
           </div>
         </div>
+
       </main>
     </div>
   )

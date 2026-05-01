@@ -9,7 +9,7 @@ import { useNotification } from "@/lib/notificationContext"
 const manrope = Manrope({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] })
 
 interface NavbarProps {
-  activePage?: "dashboard" | "projects" | "upload" | "scan-result" | "profile"
+  activePage?: "dashboard" | "projects" | "upload" | "scan-result" | "rescan" | "profile"
 }
 
 export function Navbar({ activePage = "dashboard" }: NavbarProps) {
@@ -38,6 +38,7 @@ export function Navbar({ activePage = "dashboard" }: NavbarProps) {
     { label: "Projects", href: "/projects", key: "projects" },
     { label: "Upload", href: "/upload", key: "upload" },
     { label: "Scan Result", href: "/scan-result", key: "scan-result" },
+    { label: "Rescan", href: "/rescan", key: "rescan" },
   ]
 
   const getNotificationIcon = (type: string) => {

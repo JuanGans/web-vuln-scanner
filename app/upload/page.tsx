@@ -44,6 +44,7 @@ export default function UploadPage() {
   const searchParams = useSearchParams()
   const [rescanMode, setRescanMode] = useState(false)
   const [rescanFileName, setRescanFileName] = useState<string | null>(null)
+  const [rescanScanId, setRescanScanId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchRescanData = async () => {
@@ -67,6 +68,7 @@ export default function UploadPage() {
           if (scan.fileName) {
             setRescanFileName(scan.fileName)
           }
+          setRescanScanId(scanId)
           setRescanMode(true)
         }
       } catch (e) {
@@ -209,15 +211,25 @@ export default function UploadPage() {
         message: "Analyzing vulnerabilities...",
       })
 
-      const scanRes = await fetch("/api/scan", {
+      const isRescan = rescanMode && rescanScanId
+      const scanRes = await fetch(isRescan ? "/api/rescan" : "/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filePath: uploadData.filePath,
-          fileName: file.name,
-          fileType: uploadData.fileType,
-          projectId: selectedProject === "upload-without-project" ? null : selectedProject,
-        }),
+        body: JSON.stringify(
+          isRescan
+            ? {
+                originalScanId: rescanScanId,
+                filePath: uploadData.filePath,
+                fileName: file.name,
+                fileType: uploadData.fileType,
+              }
+            : {
+                filePath: uploadData.filePath,
+                fileName: file.name,
+                fileType: uploadData.fileType,
+                projectId: selectedProject === "upload-without-project" ? null : selectedProject,
+              }
+        ),
       })
 
       if (!scanRes.ok) {
@@ -235,6 +247,16 @@ export default function UploadPage() {
       const scanData = await scanRes.json()
       setScanResult(scanData.data)
       setCurrentStep("completed")
+
+      if (isRescan && scanData.data?.rescanId) {
+        addNotification({
+          type: "success",
+          title: "Rescan Completed",
+          message: "Rescan finished successfully",
+        })
+        router.push(`/scan-result/${scanData.data.rescanId}`)
+        return
+      }
 
       // Notification: Scan success (success - persistent)
       addNotification({
@@ -428,7 +450,7 @@ export default function UploadPage() {
                   className="group flex w-full items-center justify-center gap-3 rounded-full bg-[#0053db] py-6 text-xl font-extrabold text-white shadow-xl shadow-[#0053db]/20 transition-all hover:bg-[#0048c1] hover:shadow-2xl hover:shadow-[#0053db]/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Bolt className="h-6 w-6" style={{ fill: "currentColor" }} />
-                  Start Analysis Scan
+                  {rescanMode ? "Start Rescan" : "Start Analysis Scan"}
                 </button>
               )}
 
@@ -502,9 +524,11 @@ export default function UploadPage() {
 
               {currentStep === "completed" && scanResult && (
                 <div className="mt-8 rounded-lg bg-green-50 border border-green-200 p-6">
-                  <h3 className="font-bold text-green-900 mb-4">Scan Results Available</h3>
+                  <h3 className="font-bold text-green-900 mb-4">
+                    {rescanMode ? "Rescan Results Available" : "Scan Results Available"}
+                  </h3>
                   <Link
-                    href={`/scan-result/${scanResult.id}`}
+                    href={`/scan-result/${(scanResult as any).rescanId || scanResult.id}`}
                     className="inline-block px-6 py-3 bg-[#0053db] text-white font-bold rounded-full hover:bg-[#0048c1] transition-all"
                   >
                     View Scan Result
