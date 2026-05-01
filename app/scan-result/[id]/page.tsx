@@ -3,7 +3,7 @@
 import { Navbar } from "@/components/navbar"
 import { RemediationCard } from "@/components/RemediationCard"
 import { TrendChart } from "@/components/TrendChart"
-import { ChevronRight, ChevronDown, Copy, ArrowLeft, RefreshCw } from "lucide-react"
+import { ChevronRight, ChevronDown, Copy, ArrowLeft, RefreshCw, Check, AlertCircle, Plus } from "lucide-react"
 import { Manrope } from "next/font/google"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
@@ -135,6 +135,8 @@ export default function ScanDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [openFileGroups, setOpenFileGroups] = useState<Record<string, boolean>>({})
+  const [originalScan, setOriginalScan] = useState<ScanDetail | null>(null)
+  const [relatedRescans, setRelatedRescans] = useState<ScanDetail[]>([])
 
   useEffect(() => {
     const fetchScanDetail = async () => {
@@ -155,6 +157,22 @@ export default function ScanDetailPage() {
 
         if (scanDetail) {
           setData(scanDetail)
+          
+          // If this is a rescan, fetch the original scan
+          if (scanDetail.result?.isRescan && scanDetail.result?.originalScanId) {
+            const original = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === scanDetail.result?.originalScanId)
+            if (original) {
+              setOriginalScan(original)
+            }
+          } else {
+            // If this is an original scan (not a rescan), find all related rescans
+            const rescans = (allData.data as ScanDetail[])?.filter((scan: ScanDetail) => 
+              scan.result?.isRescan && scan.result?.originalScanId === id
+            ) || []
+            if (rescans.length > 0) {
+              setRelatedRescans(rescans.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
+            }
+          }
         } else {
           setError("Scan not found")
         }
@@ -364,6 +382,125 @@ export default function ScanDetailPage() {
               <p className="text-2xl font-bold text-on-surface">{data.result?.summary?.vulnerabilitiesByType?.SQLInjection || 0}</p>
             </div>
           </div>
+
+          {/* Rescan Comparison Section */}
+          {data.result?.isRescan && data.result?.scoreImprovement && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-8 border border-green-200 shadow-[0_4px_20px_rgba(34,197,94,0.1)]">
+              <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6 flex items-center gap-2`}>
+                <Check className="w-6 h-6 text-green-600" />
+                Rescan Comparison
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {/* Fixed Vulnerabilities */}
+                <div className="bg-white rounded-lg p-6 border border-green-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check className="w-5 h-5 text-green-600" />
+                    <p className="text-xs text-on-surface-variant font-bold uppercase">Fixed</p>
+                  </div>
+                  <p className="text-3xl font-bold text-green-600">{data.result.scoreImprovement.fixed}</p>
+                  <p className="text-sm text-on-surface-variant mt-2">
+                    {data.result.scoreImprovement.percentageFixed}% of vulnerabilities fixed
+                  </p>
+                </div>
+
+                {/* Remaining Vulnerabilities */}
+                <div className="bg-white rounded-lg p-6 border border-yellow-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-600" />
+                    <p className="text-xs text-on-surface-variant font-bold uppercase">Remaining</p>
+                  </div>
+                  <p className="text-3xl font-bold text-yellow-600">{data.result.scoreImprovement.before - data.result.scoreImprovement.fixed}</p>
+                  <p className="text-sm text-on-surface-variant mt-2">Vulnerabilities still present</p>
+                </div>
+
+                {/* New Found Vulnerabilities */}
+                <div className="bg-white rounded-lg p-6 border border-blue-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Plus className="w-5 h-5 text-blue-600" />
+                    <p className="text-xs text-on-surface-variant font-bold uppercase">New Found</p>
+                  </div>
+                  <p className="text-3xl font-bold text-blue-600">{data.result.scoreImprovement.newFound}</p>
+                  <p className="text-sm text-on-surface-variant mt-2">New vulnerabilities discovered</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-green-200">
+                <div>
+                  <p className="text-xs text-on-surface-variant font-bold uppercase mb-2">Before Rescan</p>
+                  <p className="text-2xl font-bold text-on-surface">{data.result.scoreImprovement.before}</p>
+                  <p className="text-sm text-on-surface-variant">Total vulnerabilities</p>
+                </div>
+                <div>
+                  <p className="text-xs text-on-surface-variant font-bold uppercase mb-2">After Rescan</p>
+                  <p className="text-2xl font-bold text-green-600">{data.result.scoreImprovement.after}</p>
+                  <p className="text-sm text-on-surface-variant">Total vulnerabilities</p>
+                </div>
+              </div>
+
+              {originalScan && (
+                <div className="mt-6 pt-6 border-t border-green-200">
+                  <button
+                    onClick={() => router.push(`/scan-result/${originalScan.id}`)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-green-600 font-semibold hover:bg-green-50 transition-all border border-green-200"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    View Original Scan
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Related Rescans Section */}
+          {!data.result?.isRescan && relatedRescans.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-8 border border-blue-200">
+              <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6 flex items-center gap-2`}>
+                <RefreshCw className="w-6 h-6 text-blue-600" />
+                Related Rescans ({relatedRescans.length})
+              </h2>
+              
+              <div className="space-y-3">
+                {relatedRescans.map((rescan) => {
+                  const formatDate = (dateString: string) => {
+                    const date = new Date(dateString)
+                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                    const month = months[date.getMonth()]
+                    const day = date.getDate()
+                    const year = date.getFullYear()
+                    return `${month} ${day}, ${year}`
+                  }
+
+                  return (
+                    <button
+                      key={rescan.id}
+                      onClick={() => router.push(`/scan-result/${rescan.id}`)}
+                      className="w-full flex items-center justify-between p-4 bg-white rounded-lg border border-blue-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all text-left group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="inline-block px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700">
+                            Rescan
+                          </span>
+                          <p className="text-sm text-on-surface font-semibold group-hover:text-blue-600 transition-colors">
+                            {formatDate(rescan.createdAt)}
+                          </p>
+                        </div>
+                        {rescan.result?.scoreImprovement && (
+                          <p className="text-xs text-on-surface-variant">
+                            {rescan.result.scoreImprovement.fixed} fixed • 
+                            {rescan.result.scoreImprovement.before - rescan.result.scoreImprovement.fixed} remaining • 
+                            {rescan.result.scoreImprovement.newFound} new
+                          </p>
+                        )}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:text-blue-600 transition-colors shrink-0 ml-2" />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Vulnerabilities List */}
           <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
