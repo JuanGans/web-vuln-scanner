@@ -19,6 +19,14 @@ export function Navbar({ activePage = "dashboard" }: NavbarProps) {
   const notificationRef = useRef<HTMLDivElement>(null)
   const { notifications, unreadCount, markAsRead, clearNotification, clearAllNotifications } = useNotification()
 
+  // Auto-mark all unread notifications as read when notification panel opens
+  useEffect(() => {
+    if (isNotificationOpen) {
+      const unreadNotifications = notifications.filter((n) => !n.read)
+      unreadNotifications.forEach((n) => markAsRead(n.id))
+    }
+  }, [isNotificationOpen, notifications, markAsRead])
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
@@ -150,9 +158,6 @@ export function Navbar({ activePage = "dashboard" }: NavbarProps) {
                         className={`border-b border-[#e2e8f0] px-4 py-3 hover:bg-[#f9fafb] transition-colors ${
                           !notif.read ? "bg-[#f0f7ff]" : ""
                         }`}
-                        onClick={() => {
-                          if (!notif.read) markAsRead(notif.id)
-                        }}
                       >
                         <div className="flex items-start gap-3">
                           {/* Icon */}
