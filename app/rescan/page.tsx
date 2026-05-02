@@ -302,7 +302,7 @@ export default function RescanPage() {
                         <td className="px-8 py-5 text-right">
                           <div className="inline-flex items-center gap-2">
                             <Link
-                              href={`/scan-result/${scan.id}`}
+                              href={`/rescan/${scan.id}`}
                               className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-primary font-bold text-xs hover:bg-primary/5 transition-all border border-transparent hover:border-primary/10"
                             >
                               View Detail

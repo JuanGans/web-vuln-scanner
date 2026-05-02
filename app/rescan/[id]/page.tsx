@@ -125,7 +125,7 @@ interface GroupedVulnerabilities {
   vulnerabilities: Array<VulnerabilityItem & { originalIndex: number }>
 }
 
-export default function ScanDetailPage() {
+export default function RescanDetailPage() {
   const params = useParams()
   const router = useRouter()
   const id = params?.id as string
@@ -136,7 +136,6 @@ export default function ScanDetailPage() {
   const [copied, setCopied] = useState(false)
   const [openFileGroups, setOpenFileGroups] = useState<Record<string, boolean>>({})
   const [originalScan, setOriginalScan] = useState<ScanDetail | null>(null)
-  const [latestRescan, setLatestRescan] = useState<ScanDetail | null>(null)
 
   useEffect(() => {
     const fetchScanDetail = async () => {
@@ -149,31 +148,11 @@ export default function ScanDetailPage() {
         }
         const allData = await res.json()
 
-        // Store all scans for calculating position
         setAllScans(allData.data || [])
-
-        // Find the specific scan by ID
         const scanDetail = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === id)
 
         if (scanDetail) {
-          if (scanDetail.result?.isRescan) {
-            router.replace(`/rescan/${scanDetail.id}`)
-            return
-          }
-
           setData(scanDetail)
-
-          // Find any rescans that reference this scan (so we can show a clickable indicator)
-          const rescansForThis = (allData.data as ScanDetail[]).filter((s) => s.result?.isRescan && s.result?.originalScanId === id)
-          if (rescansForThis.length > 0) {
-            // pick latest by createdAt
-            rescansForThis.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            setLatestRescan(rescansForThis[0])
-          } else {
-            setLatestRescan(null)
-          }
-
-          // If this is a rescan, fetch the original scan
           if (scanDetail.result?.isRescan && scanDetail.result?.originalScanId) {
             const original = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === scanDetail.result?.originalScanId)
             if (original) {
@@ -181,11 +160,11 @@ export default function ScanDetailPage() {
             }
           }
         } else {
-          setError("Scan not found")
+          setError("Rescan not found")
         }
       } catch (err) {
-        console.error("Failed to fetch scan detail:", err)
-        setError(err instanceof Error ? err.message : "Failed to load scan details")
+        console.error("Failed to fetch rescan detail:", err)
+        setError(err instanceof Error ? err.message : "Failed to load rescan details")
       } finally {
         setIsLoading(false)
       }
@@ -200,7 +179,6 @@ export default function ScanDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Format date consistently across app
   const formatScanDate = (dateString: string) => {
     const date = new Date(dateString)
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -210,22 +188,12 @@ export default function ScanDetailPage() {
     return `${month} ${day}, ${year}`
   }
 
-  // Get project name or default
   const getProjectName = (scan: ScanDetail | null) => {
     if (!scan) return "Scan"
     if ((scan as any).project?.name) {
       return (scan as any).project.name
     }
     return "Unassigned Scan"
-  }
-
-  // Calculate scan number within project
-  const getScanNumber = (scan: ScanDetail | null): number => {
-    if (!scan || !allScans.length) return 1
-    const projectScans = allScans.filter((s) => s.projectId === scan.projectId)
-    const scansCount = projectScans.length
-    const scanIndex = projectScans.findIndex((s) => s.id === scan.id)
-    return scansCount - scanIndex // Reverse order for descending display
   }
 
   const getFileName = (filePath: string) => {
@@ -273,7 +241,7 @@ export default function ScanDetailPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background text-on-surface flex flex-col">
-        <Navbar activePage="scan-result" />
+        <Navbar activePage="rescan" />
         <main className="flex-grow max-w-7xl mx-auto w-full px-8 pt-12 pb-24 flex items-center justify-center">
           <p className="text-on-surface-variant">Loading scan details...</p>
         </main>
@@ -284,11 +252,11 @@ export default function ScanDetailPage() {
   if (!data) {
     return (
       <div className="min-h-screen bg-background text-on-surface flex flex-col">
-        <Navbar activePage="scan-result" />
+        <Navbar activePage="rescan" />
         <main className="flex-grow max-w-7xl mx-auto w-full px-8 pt-12 pb-24 flex flex-col items-center justify-center gap-6">
-          <p className="text-on-surface-variant text-lg">Scan Result Not Found</p>
+          <p className="text-on-surface-variant text-lg">Rescan Not Found</p>
           <button
-            onClick={() => router.push("/scan-result")}
+            onClick={() => router.push("/rescan")}
             className="flex items-center gap-2 px-6 py-2 rounded-full bg-primary text-white font-bold hover:shadow-lg transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -301,22 +269,20 @@ export default function ScanDetailPage() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface flex flex-col">
-      <Navbar activePage="scan-result" />
+      <Navbar activePage="rescan" />
 
       <main className="flex-grow max-w-7xl mx-auto w-full px-8 pt-12 pb-24">
-        {/* Back Button */}
         <button
-          onClick={() => router.push("/scan-result")}
+          onClick={() => router.push("/rescan")}
           className="flex items-center gap-2 text-on-surface-variant hover:text-primary transition-colors mb-8 font-bold"
         >
           <ArrowLeft className="w-5 h-5" />
           Back to Results
         </button>
 
-        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-on-surface-variant mb-6 text-sm font-medium tracking-wide">
           <button
-            onClick={() => router.push("/scan-result")}
+            onClick={() => router.push("/rescan")}
             className="cursor-pointer hover:text-primary transition-colors duration-200 underline-offset-2 hover:underline"
           >
             SCANS
@@ -325,7 +291,6 @@ export default function ScanDetailPage() {
           <span className="text-primary font-bold">{getProjectName(data)}</span>
         </div>
 
-        {/* Title and Info */}
         <div className="mb-12">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
@@ -355,22 +320,16 @@ export default function ScanDetailPage() {
             </div>
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Scan Date</p>
-              <p className="text-on-surface font-bold">
-                {formatScanDate(data.createdAt)}
-              </p>
+              <p className="text-on-surface font-bold">{formatScanDate(data.createdAt)}</p>
             </div>
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Last Updated</p>
-              <p className="text-on-surface font-bold">
-                {formatScanDate(data.updatedAt)}
-              </p>
+              <p className="text-on-surface font-bold">{formatScanDate(data.updatedAt)}</p>
             </div>
           </div>
         </div>
 
-        {/* Results Section */}
         <div className="space-y-8">
-          {/* Summary Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-surface-container-low rounded-lg p-6 border border-outline-variant/10">
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-2">Status</p>
@@ -390,16 +349,14 @@ export default function ScanDetailPage() {
             </div>
           </div>
 
-          {/* Rescan Comparison Section */}
           {data.result?.isRescan && data.result?.scoreImprovement && (
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-8 border border-green-200 shadow-[0_4px_20px_rgba(34,197,94,0.1)]">
               <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6 flex items-center gap-2`}>
                 <Check className="w-6 h-6 text-green-600" />
                 Rescan Comparison
               </h2>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                {/* Fixed Vulnerabilities */}
                 <div className="bg-white rounded-lg p-6 border border-green-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Check className="w-5 h-5 text-green-600" />
@@ -411,7 +368,6 @@ export default function ScanDetailPage() {
                   </p>
                 </div>
 
-                {/* Remaining Vulnerabilities */}
                 <div className="bg-white rounded-lg p-6 border border-yellow-200">
                   <div className="flex items-center gap-2 mb-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600" />
@@ -421,7 +377,6 @@ export default function ScanDetailPage() {
                   <p className="text-sm text-on-surface-variant mt-2">Vulnerabilities still present</p>
                 </div>
 
-                {/* New Found Vulnerabilities */}
                 <div className="bg-white rounded-lg p-6 border border-blue-200">
                   <div className="flex items-center gap-2 mb-2">
                     <Plus className="w-5 h-5 text-blue-600" />
@@ -459,7 +414,6 @@ export default function ScanDetailPage() {
             </div>
           )}
 
-          {/* Vulnerabilities List */}
           <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
             <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6`}>Vulnerabilities Found</h2>
             {data.result?.vulnerabilities && data.result.vulnerabilities.length > 0 ? (
@@ -485,9 +439,7 @@ export default function ScanDetailPage() {
                             </span>
                             <span className="font-semibold text-on-surface">{group.fileName}</span>
                           </div>
-                          <p className="text-sm text-on-surface-variant">
-                            Klik untuk melihat daftar vulnerability di file ini.
-                          </p>
+                          <p className="text-sm text-on-surface-variant">Klik untuk melihat daftar vulnerability di file ini.</p>
                         </div>
 
                         <div className="flex items-center gap-4 shrink-0">
@@ -549,7 +501,6 @@ export default function ScanDetailPage() {
             )}
           </div>
 
-          {/* Remediation Guidance Section */}
           {data.result?.vulnerabilities && data.result.vulnerabilities.length > 0 && (
             <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
               <h2 className={`${manrope.className} text-2xl font-bold text-on-surface mb-6`}>📚 Panduan Perbaikan</h2>
@@ -558,21 +509,17 @@ export default function ScanDetailPage() {
               </p>
               <div className="space-y-6">
                 {data.result.vulnerabilities.map((vuln, idx: number) => {
-                  // Map vulnerability type to rule ID
-                  let ruleId = `${vuln.type === "XSS" ? "XSS" : "SQLI"}_001`
-                  
-                  // Try to get remediation guide
+                  const ruleId = `${vuln.type === "XSS" ? "XSS" : "SQLI"}_001`
                   try {
                     const guide = getRemediationGuide(ruleId)
                     if (guide) {
-                      // Map severity for RemediationCard
                       const severityMap = {
                         "Kritis": "CRITICAL",
                         "Tinggi": "HIGH",
                         "Sedang": "MEDIUM",
                         "Rendah": "LOW"
                       } as Record<string, "CRITICAL" | "HIGH" | "MEDIUM" | "LOW">
-                      
+
                       return (
                         <RemediationCard
                           key={idx}
@@ -597,7 +544,6 @@ export default function ScanDetailPage() {
             </div>
           )}
 
-          {/* Raw Results Display */}
           <div className="bg-surface-container rounded-lg p-8 border border-outline-variant/10 shadow-[0_4px_20px_rgba(42,52,57,0.03)]">
             <div className="flex items-center justify-between mb-6">
               <h3 className={`${manrope.className} text-lg font-bold text-on-surface`}>Raw Results</h3>
@@ -617,7 +563,6 @@ export default function ScanDetailPage() {
           </div>
         </div>
 
-        {/* Additional Info */}
         <div className="mt-12 bg-surface-container-low rounded-lg p-8 border border-outline-variant/10">
           <h3 className={`${manrope.className} text-lg font-bold text-on-surface mb-4`}>Scan Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -631,7 +576,6 @@ export default function ScanDetailPage() {
             </div>
           </div>
         </div>
-
       </main>
     </div>
   )

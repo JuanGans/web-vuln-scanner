@@ -254,7 +254,7 @@ export default function UploadPage() {
           title: "Rescan Completed",
           message: "Rescan finished successfully",
         })
-        router.push(`/scan-result/${scanData.data.rescanId}`)
+        router.push(`/rescan/${scanData.data.rescanId}`)
         return
       }
 
@@ -527,12 +527,21 @@ export default function UploadPage() {
                   <h3 className="font-bold text-green-900 mb-4">
                     {rescanMode ? "Rescan Results Available" : "Scan Results Available"}
                   </h3>
-                  <Link
-                    href={`/scan-result/${(scanResult as any).rescanId || scanResult.id}`}
-                    className="inline-block px-6 py-3 bg-[#0053db] text-white font-bold rounded-full hover:bg-[#0048c1] transition-all"
-                  >
-                    View Scan Result
-                  </Link>
+                  {rescanMode && (scanResult as any)?.rescanId ? (
+                    <Link
+                      href={`/rescan/${(scanResult as any).rescanId}`}
+                      className="inline-block px-6 py-3 bg-[#0053db] text-white font-bold rounded-full hover:bg-[#0048c1] transition-all"
+                    >
+                      View Rescan Detail
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/scan-result/${(scanResult as any).id}`}
+                      className="inline-block px-6 py-3 bg-[#0053db] text-white font-bold rounded-full hover:bg-[#0048c1] transition-all"
+                    >
+                      View Scan Result
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

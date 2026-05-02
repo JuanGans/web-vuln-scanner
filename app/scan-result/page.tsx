@@ -57,7 +57,8 @@ export default function ScanResultPage() {
           throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`)
         }
         const data = await res.json()
-        setScans(data.data || [])
+        const primaryScans = (data.data || []).filter((scan: DBScanResult) => !scan.result?.isRescan)
+        setScans(primaryScans)
       } catch (error) {
         console.error("Failed to fetch scans:", error)
       } finally {

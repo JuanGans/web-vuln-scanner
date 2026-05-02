@@ -122,34 +122,66 @@ export default async function handler(
     const fixedCount = comparison.fixed.length;
     const percentageFixed = originalTotal > 0 ? Math.round((fixedCount / originalTotal) * 100) : 0;
 
-    const rescanDbResult = await prisma.scanResult.create({
-      data: {
-        fileName: fileName || path.basename(filePath),
-        ...(originalScan.projectId && {
-          project: { connect: { id: originalScan.projectId } },
-        }),
-        result: {
-          ...enrichedResult,
-          isRescan: true,
-          originalScanId,
-          comparison,
-          scoreImprovement: {
-            before: originalTotal,
-            after: newTotal,
-            fixed: fixedCount,
-            newFound: comparison.newFound.length,
-            percentageFixed,
-          },
-        } as any,
-        totalVulnerabilities: enrichedResult.summary.totalVulnerabilities,
-        criticalCount: enrichedResult.summary.vulnerabilitiesBySeverity.CRITICAL,
-        highCount: enrichedResult.summary.vulnerabilitiesBySeverity.HIGH,
-        mediumCount: enrichedResult.summary.vulnerabilitiesBySeverity.MEDIUM,
-        lowCount: enrichedResult.summary.vulnerabilitiesBySeverity.LOW,
-        healthScore: enrichedResult.summary.healthScore,
-        securityStatus: enrichedResult.summary.securityStatus,
+    // If a previous rescan exists for this originalScanId, update it instead of creating a new one
+    let rescanDbResult: any = null
+
+    // Use raw SQL to query JSON fields for isRescan and originalScanId (Postgres JSON operator)
+    const existingRescans = await prisma.$queryRaw`
+      SELECT * FROM "ScanResult"
+      WHERE (result->>'isRescan') = 'true' AND (result->>'originalScanId') = ${originalScanId}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    ` as any[]
+
+    const rescanPayload = {
+      ...enrichedResult,
+      isRescan: true,
+      originalScanId,
+      comparison,
+      scoreImprovement: {
+        before: originalTotal,
+        after: newTotal,
+        fixed: fixedCount,
+        newFound: comparison.newFound.length,
+        percentageFixed,
       },
-    });
+    } as any
+
+    if (existingRescans && existingRescans.length > 0) {
+      const existing = existingRescans[0]
+      rescanDbResult = await prisma.scanResult.update({
+        where: { id: existing.id },
+        data: {
+          fileName: fileName || path.basename(filePath),
+          ...(originalScan.projectId && { project: { connect: { id: originalScan.projectId } } }),
+          result: rescanPayload,
+          totalVulnerabilities: enrichedResult.summary.totalVulnerabilities,
+          criticalCount: enrichedResult.summary.vulnerabilitiesBySeverity.CRITICAL,
+          highCount: enrichedResult.summary.vulnerabilitiesBySeverity.HIGH,
+          mediumCount: enrichedResult.summary.vulnerabilitiesBySeverity.MEDIUM,
+          lowCount: enrichedResult.summary.vulnerabilitiesBySeverity.LOW,
+          healthScore: enrichedResult.summary.healthScore,
+          securityStatus: enrichedResult.summary.securityStatus,
+        },
+      })
+    } else {
+      rescanDbResult = await prisma.scanResult.create({
+        data: {
+          fileName: fileName || path.basename(filePath),
+          ...(originalScan.projectId && {
+            project: { connect: { id: originalScan.projectId } },
+          }),
+          result: rescanPayload as any,
+          totalVulnerabilities: enrichedResult.summary.totalVulnerabilities,
+          criticalCount: enrichedResult.summary.vulnerabilitiesBySeverity.CRITICAL,
+          highCount: enrichedResult.summary.vulnerabilitiesBySeverity.HIGH,
+          mediumCount: enrichedResult.summary.vulnerabilitiesBySeverity.MEDIUM,
+          lowCount: enrichedResult.summary.vulnerabilitiesBySeverity.LOW,
+          healthScore: enrichedResult.summary.healthScore,
+          securityStatus: enrichedResult.summary.securityStatus,
+        },
+      })
+    }
 
     console.log(
       `[RESCAN] Complete — Fixed: ${fixedCount}, Remaining: ${comparison.remaining.length}, New: ${comparison.newFound.length}`
