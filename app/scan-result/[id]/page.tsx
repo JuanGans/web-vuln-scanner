@@ -5,7 +5,7 @@ import { RemediationCard } from "@/components/RemediationCard"
 import { TrendChart } from "@/components/TrendChart"
 import { ChevronRight, ChevronDown, Copy, ArrowLeft, RefreshCw, Check, AlertCircle, Plus } from "lucide-react"
 import { Manrope } from "next/font/google"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { getRemediationGuide } from "@/lib/remediationGuide"
 
@@ -138,65 +138,74 @@ export default function ScanDetailPage() {
   const [originalScan, setOriginalScan] = useState<ScanDetail | null>(null)
   const [latestRescan, setLatestRescan] = useState<ScanDetail | null>(null)
 
-  useEffect(() => {
-    const fetchScanDetail = async () => {
-      if (!id) return
+  const fetchScanDetail = useCallback(async () => {
+    if (!id) return
 
-      try {
-        const res = await fetch(`/api/history`)
-        if (!res.ok) {
-          throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`)
-        }
-        const allData = await res.json()
-
-        // Store all scans for calculating position
-        setAllScans(allData.data || [])
-
-        // Find the specific scan by ID
-        const scanDetail = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === id)
-
-        if (scanDetail) {
-          if (scanDetail.result?.isRescan) {
-            router.replace(`/rescan/${scanDetail.id}`)
-            return
-          }
-
-          setData(scanDetail)
-
-          // Find rescans with the same file name so the badge can open the latest rescan detail
-          const currentFileName = getFileName(scanDetail.fileName || "")
-          const rescansForThis = (allData.data as ScanDetail[]).filter((s) => {
-            if (!s.result?.isRescan) return false
-            return getFileName(s.fileName || "") === currentFileName
-          })
-          if (rescansForThis.length > 0) {
-            // pick latest by createdAt
-            rescansForThis.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            setLatestRescan(rescansForThis[0])
-          } else {
-            setLatestRescan(null)
-          }
-
-          // If this is a rescan, fetch the original scan
-          if (scanDetail.result?.isRescan && scanDetail.result?.originalScanId) {
-            const original = (allData.data as ScanDetail[])?.find((scan: ScanDetail) => scan.id === scanDetail.result?.originalScanId)
-            if (original) {
-              setOriginalScan(original)
-            }
-          }
-        } else {
-          setError("Scan not found")
-        }
-      } catch (err) {
-        console.error("Failed to fetch scan detail:", err)
-        setError(err instanceof Error ? err.message : "Failed to load scan details")
-      } finally {
-        setIsLoading(false)
+    try {
+      const res = await fetch(`/api/history`)
+      if (!res.ok) {
+        throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`)
       }
+      const allData = await res.json()
+      const scans = (allData.data as ScanDetail[]) || []
+
+      // Store all scans for calculating position
+      setAllScans(scans)
+
+      // Find the specific scan by ID
+      const scanDetail = scans.find((scan: ScanDetail) => scan.id === id)
+
+      if (scanDetail) {
+        if (scanDetail.result?.isRescan) {
+          router.replace(`/rescan/${scanDetail.id}`)
+          return
+        }
+
+        setData(scanDetail)
+
+        // Prefer the real rescan relationship, using file name only as a fallback
+        const currentFileName = getFileName(scanDetail.fileName || "")
+        const rescansForThis = scans.filter((s) => {
+          if (!s.result?.isRescan) return false
+          if (s.result?.originalScanId === scanDetail.id) return true
+          return !s.result?.originalScanId && getFileName(s.fileName || "") === currentFileName
+        })
+
+        if (rescansForThis.length > 0) {
+          rescansForThis.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          setLatestRescan(rescansForThis[0])
+        } else {
+          setLatestRescan(null)
+        }
+
+        // If this is a rescan, fetch the original scan
+        if (scanDetail.result?.isRescan && scanDetail.result?.originalScanId) {
+          const original = scans.find((scan: ScanDetail) => scan.id === scanDetail.result?.originalScanId)
+          if (original) {
+            setOriginalScan(original)
+          }
+        }
+      } else {
+        setError("Scan not found")
+      }
+    } catch (err) {
+      console.error("Failed to fetch scan detail:", err)
+      setError(err instanceof Error ? err.message : "Failed to load scan details")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [id, router])
+
+  useEffect(() => {
+    fetchScanDetail()
+
+    const handleFocus = () => {
+      fetchScanDetail()
     }
 
-    fetchScanDetail()
-  }, [id])
+    window.addEventListener("focus", handleFocus)
+    return () => window.removeEventListener("focus", handleFocus)
+  }, [fetchScanDetail])
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code)
