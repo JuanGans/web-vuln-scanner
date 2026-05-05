@@ -163,8 +163,12 @@ export default function ScanDetailPage() {
 
           setData(scanDetail)
 
-          // Find any rescans that reference this scan (so we can show a clickable indicator)
-          const rescansForThis = (allData.data as ScanDetail[]).filter((s) => s.result?.isRescan && s.result?.originalScanId === id)
+          // Find rescans with the same file name so the badge can open the latest rescan detail
+          const currentFileName = getFileName(scanDetail.fileName || "")
+          const rescansForThis = (allData.data as ScanDetail[]).filter((s) => {
+            if (!s.result?.isRescan) return false
+            return getFileName(s.fileName || "") === currentFileName
+          })
           if (rescansForThis.length > 0) {
             // pick latest by createdAt
             rescansForThis.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -336,6 +340,15 @@ export default function ScanDetailPage() {
                 <span className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
                   Rescan
                 </span>
+              )}
+              {!data.result?.isRescan && latestRescan && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/rescan/${latestRescan.id}`)}
+                  className="ml-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800 hover:bg-yellow-200 transition-colors"
+                >
+                  Show Rescan
+                </button>
               )}
             </div>
             <button
