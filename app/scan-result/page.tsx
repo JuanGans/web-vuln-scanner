@@ -91,12 +91,14 @@ export default function ScanResultPage() {
 
   const getVulnerabilityBadgeColor = (level: string) => {
     switch (level) {
+      case "critical":
+        return "bg-red-200 text-red-900 border-red-300"
       case "high":
         return "bg-red-100 text-red-700 border-red-200"
       case "medium":
-        return "bg-orange-50 text-orange-700 border-orange-100"
+        return "bg-orange-100 text-orange-700 border-orange-200"
       case "low":
-        return "bg-slate-100 text-slate-700 border-slate-100"
+        return "bg-amber-100 text-amber-700 border-amber-200"
       case "secure":
         return "bg-green-100 text-green-700 border-green-200"
       default:
@@ -153,16 +155,37 @@ export default function ScanResultPage() {
     const result = scan.result as any
     const vulnerabilities = result?.vulnerabilities || []
 
-    // Prefer summary numbers when available (support different key names)
     const summary = result?.summary || {}
     const bySeverity = summary?.vulnerabilitiesBySeverity || {}
 
-    const high = bySeverity?.Kritis ?? bySeverity?.Tinggi ?? bySeverity?.CRITICAL ?? 0
-    const medium = bySeverity?.Sedang ?? bySeverity?.MEDIUM ?? 0
-    const low = bySeverity?.Rendah ?? bySeverity?.LOW ?? 0
+    const getSeverityLabel = (value: string) => {
+      const normalized = value.toLowerCase()
+      if (normalized === "critical" || normalized === "kritis") return "critical"
+      if (normalized === "high" || normalized === "tinggi") return "high"
+      if (normalized === "medium" || normalized === "sedang") return "medium"
+      if (normalized === "low" || normalized === "rendah") return "low"
+      return "unknown"
+    }
+
+    const countsFromArray = vulnerabilities.reduce(
+      (acc: { critical: number; high: number; medium: number; low: number }, vuln: any) => {
+        const label = getSeverityLabel(String(vuln?.severity || ""))
+        if (label in acc) {
+          acc[label as keyof typeof acc] += 1
+        }
+        return acc
+      },
+      { critical: 0, high: 0, medium: 0, low: 0 }
+    )
+
+    const critical = bySeverity?.CRITICAL ?? bySeverity?.Kritis ?? countsFromArray.critical
+    const high = bySeverity?.HIGH ?? bySeverity?.Tinggi ?? countsFromArray.high
+    const medium = bySeverity?.MEDIUM ?? bySeverity?.Sedang ?? countsFromArray.medium
+    const low = bySeverity?.LOW ?? bySeverity?.Rendah ?? countsFromArray.low
     const total = summary?.totalVulnerabilities ?? vulnerabilities.length
 
     return {
+      critical,
       high,
       medium,
       low,
@@ -174,6 +197,14 @@ export default function ScanResultPage() {
   // Generate vulnerability badge JSX
   const renderVulnerabilityBadges = (stats: any) => {
     const elements = []
+
+    if (stats.critical > 0) {
+      elements.push(
+        <span key="critical" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("critical")}`}>
+          {stats.critical} Critical
+        </span>
+      )
+    }
 
     if (stats.high > 0) {
       elements.push(
@@ -204,6 +235,14 @@ export default function ScanResultPage() {
         <span key="secure" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("secure")}`}>
           <CheckCircle className="w-3 h-3 mr-1" />
           Secure
+        </span>
+      )
+    }
+
+    if (!stats.secure && elements.length === 0) {
+      elements.push(
+        <span key="detected" className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-slate-100 text-slate-700 border-slate-200">
+          {stats.total} Detected
         </span>
       )
     }

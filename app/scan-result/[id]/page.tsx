@@ -14,13 +14,15 @@ const manrope = Manrope({ subsets: ["latin"], weight: ["200", "400", "600", "800
 const getSeverityColor = (severity: string) => {
   switch (severity) {
     case "Kritis":
-      return { bg: "bg-error/10", text: "text-error", badge: "bg-error-container text-on-error-container" }
+      return { bg: "bg-red-200/10", text: "text-red-900", badge: "bg-red-200 text-red-900 border border-red-300" }
     case "Tinggi":
-      return { bg: "bg-yellow-500/10", text: "text-yellow-600", badge: "bg-yellow-100 text-yellow-800" }
+      return { bg: "bg-red-100/10", text: "text-red-700", badge: "bg-red-100 text-red-700 border border-red-200" }
     case "Sedang":
-      return { bg: "bg-blue-500/10", text: "text-blue-600", badge: "bg-blue-100 text-blue-800" }
+      return { bg: "bg-orange-100/10", text: "text-orange-700", badge: "bg-orange-100 text-orange-700 border border-orange-200" }
+    case "Rendah":
+      return { bg: "bg-amber-100/10", text: "text-amber-700", badge: "bg-amber-100 text-amber-700 border border-amber-200" }
     default:
-      return { bg: "bg-green-500/10", text: "text-green-600", badge: "bg-green-100 text-green-800" }
+      return { bg: "bg-green-500/10", text: "text-green-600", badge: "bg-green-100 text-green-700 border border-green-200" }
   }
 }
 
@@ -542,10 +544,15 @@ export default function ScanDetailPage() {
                                 className="flex items-center justify-between p-4 bg-surface-container rounded-lg border border-outline-variant/10 hover:border-primary/30 hover:bg-primary/5 transition-all cursor-pointer group"
                               >
                                 <div className="flex-grow min-w-0">
-                                  <div className="flex items-center gap-3 mb-2">
+                                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                                     <span className={`${severityColor.badge} px-3 py-1 rounded text-xs font-bold`}>
                                       {vuln.severity}
                                     </span>
+                                    {(vuln as any).isFalsePositive && (
+                                      <span className="px-3 py-1 rounded bg-yellow-100 text-yellow-800 text-xs font-bold">
+                                        ⚠️ False Positive
+                                      </span>
+                                    )}
                                     <span className="text-on-surface font-semibold group-hover:text-primary transition-colors">
                                       {vuln.type === "XSS" ? "Cross-Site Scripting (XSS)" : "SQL Injection"} #{displayIndex + 1}
                                     </span>
