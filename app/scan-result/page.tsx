@@ -150,34 +150,33 @@ export default function ScanResultPage() {
 
   // Count vulnerabilities by severity
   const getVulnerabilityStats = (scan: DBScanResult) => {
-    const vulnerabilities = (scan.result as any)?.vulnerabilities || []
-    const stats = {
-      high: 0,
-      medium: 0,
-      low: 0,
-      secure: vulnerabilities.length === 0,
+    const result = scan.result as any
+    const vulnerabilities = result?.vulnerabilities || []
+
+    // Prefer summary numbers when available (support different key names)
+    const summary = result?.summary || {}
+    const bySeverity = summary?.vulnerabilitiesBySeverity || {}
+
+    const high = bySeverity?.Kritis ?? bySeverity?.Tinggi ?? bySeverity?.CRITICAL ?? 0
+    const medium = bySeverity?.Sedang ?? bySeverity?.MEDIUM ?? 0
+    const low = bySeverity?.Rendah ?? bySeverity?.LOW ?? 0
+    const total = summary?.totalVulnerabilities ?? vulnerabilities.length
+
+    return {
+      high,
+      medium,
+      low,
+      total,
+      secure: total === 0,
     }
-
-    vulnerabilities.forEach((vuln: any) => {
-      const severity = vuln.severity?.toLowerCase() || ""
-      if (severity === "kritis" || severity === "tinggi") {
-        stats.high++
-      } else if (severity === "sedang") {
-        stats.medium++
-      } else if (severity === "rendah") {
-        stats.low++
-      }
-    })
-
-    return stats
   }
 
   // Generate vulnerability badge JSX
   const renderVulnerabilityBadges = (stats: any) => {
-    const badges = []
+    const elements = []
 
     if (stats.high > 0) {
-      badges.push(
+      elements.push(
         <span key="high" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("high")}`}>
           {stats.high} High
         </span>
@@ -185,7 +184,7 @@ export default function ScanResultPage() {
     }
 
     if (stats.medium > 0) {
-      badges.push(
+      elements.push(
         <span key="medium" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("medium")}`}>
           {stats.medium} Medium
         </span>
@@ -193,7 +192,7 @@ export default function ScanResultPage() {
     }
 
     if (stats.low > 0) {
-      badges.push(
+      elements.push(
         <span key="low" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("low")}`}>
           {stats.low} Low
         </span>
@@ -201,7 +200,7 @@ export default function ScanResultPage() {
     }
 
     if (stats.secure) {
-      badges.push(
+      elements.push(
         <span key="secure" className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${getVulnerabilityBadgeColor("secure")}`}>
           <CheckCircle className="w-3 h-3 mr-1" />
           Secure
@@ -209,7 +208,7 @@ export default function ScanResultPage() {
       )
     }
 
-    return badges.length > 0 ? badges : <span className="text-on-surface-variant text-xs">No data</span>
+    return <div className="flex flex-wrap items-center gap-2">{elements}</div>
   }
 
   const getIconBgColor = () => {

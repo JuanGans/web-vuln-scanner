@@ -283,6 +283,12 @@ export default function ScanDetailPage() {
     }))
   }
 
+  // Safe accessors for summary variants (some APIs use different key names)
+  const severityCounts = (data?.result?.summary?.vulnerabilitiesBySeverity ?? {}) as any
+  const typeCounts = (data?.result?.summary?.vulnerabilitiesByType ?? {}) as any
+  const healthScore = (data?.result?.summary as any)?.healthScore
+  const securityStatus = (data?.result?.summary as any)?.securityStatus
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background text-on-surface flex flex-col">
@@ -368,6 +374,8 @@ export default function ScanDetailPage() {
               Rescan File
             </button>
           </div>
+
+          {/* Vulnerability Count Card removed from detail view — shown on list page instead */}
           <div className="flex flex-wrap gap-6 mt-4">
             <div>
               <p className="text-xs text-on-surface-variant font-bold uppercase mb-1">Description</p>
